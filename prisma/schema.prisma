@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Patient {
+  id               String   @id @default(cuid())
+  firstName        String
+  lastName         String
+  dob              DateTime
+  gender       Gender
+  phoneCountryCode String?
+  phone            String?
+  phoneE164        String?
+  email            String?
+  addressLine1     String?
+  addressLine2     String?
+  city             String?
+  state            String?
+  postalCode       String?
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  prescriptions    Prescription[]
+
+  @@index([lastName, firstName])
+  @@index([dob])
+  @@index([phone])
+  @@index([phoneE164])
+}
+
+model Medication {
+  id              String         @id @default(cuid())
+  name            String         @unique
+  commonStrengths String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  prescriptions   Prescription[]
+
+  @@index([name])
+}
+
+model Prescription {
+  id           String     @id @default(cuid())
+  patientId    String
+  medicationId String
+  medicationName String
+  strength     String
+  dose         String
+  frequency    String
+  duration     String
+  instructions String?
+  isActive     Boolean    @default(true)
+  inactivatedAt DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  patient      Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  medication   Medication @relation(fields: [medicationId], references: [id])
+
+  @@index([patientId, createdAt])
+  @@index([patientId, isActive])
+  @@index([medicationId])
+}
+
+enum Gender {
+  male
+  female
+  other
+  prefer_not_to_say
+}

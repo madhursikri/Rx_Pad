@@ -1,0 +1,42 @@
+export type Gender = "male" | "female" | "other" | "prefer_not_to_say";
+
+export type PatientSummary = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  dob: string;
+  gender: Gender;
+  phoneCountryCode: string | null;
+  phone: string | null;
+  updatedAt: string;
+};
+
+export type PatientDetail = PatientSummary & {
+  email: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+  notes: string | null;
+  createdAt: string;
+};
+
+export type MedicationOption = {
+  id: string;
+  name: string;
+  commonStrengths: string | null;
+};
+
+export type PrescriptionRecord = {
+  id: string;
+  medicationName: string;
+  strength: string;
+  dose: string;
+  frequency: string;
+  duration: string;
+  instructions: string | null;
+  isActive: boolean;
+  inactivatedAt: string | null;
+  createdAt: string;
+};
