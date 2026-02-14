@@ -405,6 +405,15 @@ textarea:focus-visible {
   box-shadow: none;
 }
 
+.btn-danger {
+  background: linear-gradient(120deg, #c0392b, #8f231a);
+  color: #fff;
+}
+
+.btn-danger:hover {
+  box-shadow: 0 16px 28px -18px rgba(143, 35, 26, 0.8);
+}
+
 .btn-xs {
   padding: 0.38rem 0.68rem;
   font-size: 0.8rem;
@@ -642,6 +651,16 @@ textarea:focus-visible {
   font-size: 0.86rem;
 }
 
+.note-compose-form {
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 0.6rem;
+}
+
+.note-compose-form textarea {
+  min-height: 5rem;
+}
+
 .rx-status-list {
   margin: 0.65rem 0 0;
   padding: 0;
@@ -679,6 +698,25 @@ textarea:focus-visible {
   border-radius: 0.72rem;
   background: #fbfdff;
   padding: 0.65rem 0.72rem;
+}
+
+.rx-card-selectable {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.rx-card-selectable:hover {
+  border-color: #9dcfe2;
+  box-shadow: 0 12px 20px -20px rgba(10, 88, 122, 0.75);
+  transform: translateY(-1px);
+}
+
+.rx-card-selected {
+  border-color: #6ec2df;
+  background: linear-gradient(140deg, #eefbff, #f3fff8);
+  box-shadow: 0 0 0 4px rgba(110, 194, 223, 0.18);
 }
 
 .rx-title {

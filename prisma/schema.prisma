@@ -26,6 +26,7 @@ model Patient {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   prescriptions    Prescription[]
+  patientNotes     PatientNote[]
 
   @@index([lastName, firstName])
   @@index([dob])
@@ -33,13 +34,28 @@ model Patient {
   @@index([phoneE164])
 }
 
+model PatientNote {
+  id        String   @id @default(cuid())
+  patientId String
+  note      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, createdAt])
+}
+
 model Medication {
-  id              String         @id @default(cuid())
-  name            String         @unique
-  commonStrengths String?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  prescriptions   Prescription[]
+  id                  String         @id @default(cuid())
+  name                String         @unique
+  commonStrengths     String?
+  defaultDose         String?
+  defaultFrequency    String?
+  defaultDuration     String?
+  defaultInstructions String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  prescriptions       Prescription[]
 
   @@index([name])
 }

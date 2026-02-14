@@ -17,6 +17,14 @@ Local-first patient intake and search web app for a small medical practice.
   - enter strength, dose, frequency, duration, and instructions
   - mark prescriptions active/inactive (without deleting history)
   - view active prescriptions and optional inactive history
+- Add patient visit notes directly from patient overview:
+  - notes are timestamped and shown in reverse chronological order
+- Prescription Dataset:
+  - top-level screen to manage frequently used medication presets
+  - add new medication entries with default dosage/frequency/duration/instructions
+  - select existing entries to edit and save updates
+  - delete dataset entries that are no longer needed
+  - newly added entries appear in patient prescription search immediately
 
 ## Tech Stack
 

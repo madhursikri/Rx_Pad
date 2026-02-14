@@ -26,6 +26,10 @@ export type MedicationOption = {
   id: string;
   name: string;
   commonStrengths: string | null;
+  defaultDose: string | null;
+  defaultFrequency: string | null;
+  defaultDuration: string | null;
+  defaultInstructions: string | null;
 };
 
 export type PrescriptionRecord = {
@@ -38,5 +42,11 @@ export type PrescriptionRecord = {
   instructions: string | null;
   isActive: boolean;
   inactivatedAt: string | null;
+  createdAt: string;
+};
+
+export type PatientNoteRecord = {
+  id: string;
+  note: string;
   createdAt: string;
 };

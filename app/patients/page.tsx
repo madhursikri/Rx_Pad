@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import type { MedicationOption, PatientDetail, PatientSummary, PrescriptionRecord } from "@/types/patient";
+import type { MedicationOption, PatientDetail, PatientNoteRecord, PatientSummary, PrescriptionRecord } from "@/types/patient";
 
 type PrescriptionFormState = {
   strength: string;
@@ -23,7 +23,8 @@ const initialPrescriptionForm: PrescriptionFormState = {
 const defaultPrescriptionTemplate = {
   dose: "1 tablet",
   frequency: "Twice daily",
-  duration: "7 days"
+  duration: "7 days",
+  instructions: ""
 };
 
 function formatDate(value: string): string {
@@ -88,16 +89,16 @@ function PatientsSearchContent() {
   const [showInactivePrescriptions, setShowInactivePrescriptions] = useState(false);
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
   const [showAddPrescriptionForm, setShowAddPrescriptionForm] = useState(false);
+  const [patientNotes, setPatientNotes] = useState<PatientNoteRecord[]>([]);
+  const [noteText, setNoteText] = useState("");
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteLoading, setNoteLoading] = useState(false);
+  const [noteError, setNoteError] = useState<string | null>(null);
+  const [noteSuccess, setNoteSuccess] = useState<string | null>(null);
+  const [showNoteForm, setShowNoteForm] = useState(false);
 
   const activePrescriptions = useMemo(() => prescriptions.filter((item) => item.isActive), [prescriptions]);
   const inactivePrescriptions = useMemo(() => prescriptions.filter((item) => !item.isActive), [prescriptions]);
-
-  const previousNotes = useMemo(() => {
-    const notes = prescriptions
-      .map((item) => item.instructions?.trim() ?? "")
-      .filter((value) => value.length > 0);
-    return notes.slice(0, 8);
-  }, [prescriptions]);
 
   async function loadPrescriptions(patientId: string) {
     setPrescriptionsLoading(true);
@@ -113,6 +114,23 @@ function PatientsSearchContent() {
       setPrescriptionError("Could not load prescriptions.");
     } finally {
       setPrescriptionsLoading(false);
+    }
+  }
+
+  async function loadPatientNotes(patientId: string) {
+    setNoteLoading(true);
+    try {
+      const response = await fetch(`/api/patients/${patientId}/notes`);
+      const payload = (await response.json()) as PatientNoteRecord[] | { message?: string };
+      if (!response.ok) {
+        setNoteError((payload as { message?: string }).message ?? "Could not load notes.");
+        return;
+      }
+      setPatientNotes(payload as PatientNoteRecord[]);
+    } catch {
+      setNoteError("Could not load notes.");
+    } finally {
+      setNoteLoading(false);
     }
   }
 
@@ -155,7 +173,9 @@ function PatientsSearchContent() {
     if (!selectedId) {
       setSelectedPatient(null);
       setPrescriptions([]);
+      setPatientNotes([]);
       setShowAddPrescriptionForm(false);
+      setShowNoteForm(false);
       return;
     }
 
@@ -181,9 +201,14 @@ function PatientsSearchContent() {
 
     loadDetail();
     loadPrescriptions(selectedId);
+    loadPatientNotes(selectedId);
     setPrescriptionError(null);
     setPrescriptionSuccess(null);
+    setNoteError(null);
+    setNoteSuccess(null);
+    setNoteText("");
     setShowAddPrescriptionForm(false);
+    setShowNoteForm(false);
     return () => controller.abort();
   }, [selectedId]);
 
@@ -250,9 +275,10 @@ function PatientsSearchContent() {
     setPrescriptionForm((prev) => ({
       ...prev,
       strength: pickDefaultStrength(medication.commonStrengths),
-      dose: prev.dose || defaultPrescriptionTemplate.dose,
-      frequency: prev.frequency || defaultPrescriptionTemplate.frequency,
-      duration: prev.duration || defaultPrescriptionTemplate.duration
+      dose: medication.defaultDose || prev.dose || defaultPrescriptionTemplate.dose,
+      frequency: medication.defaultFrequency || prev.frequency || defaultPrescriptionTemplate.frequency,
+      duration: medication.defaultDuration || prev.duration || defaultPrescriptionTemplate.duration,
+      instructions: medication.defaultInstructions || prev.instructions || defaultPrescriptionTemplate.instructions
     }));
     setPrescriptionFieldErrors((prev) => {
       const next = { ...prev };
@@ -336,6 +362,43 @@ function PatientsSearchContent() {
       setPrescriptionError("Network error while updating prescription status.");
     } finally {
       setStatusUpdatingId(null);
+    }
+  }
+
+  async function submitPatientNote(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedId) return;
+
+    const trimmed = noteText.trim();
+    if (!trimmed) {
+      setNoteError("Note is required.");
+      return;
+    }
+
+    setNoteSaving(true);
+    setNoteError(null);
+    setNoteSuccess(null);
+
+    try {
+      const response = await fetch(`/api/patients/${selectedId}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note: trimmed })
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        setNoteError(payload?.message ?? "Could not save note.");
+        return;
+      }
+
+      setNoteText("");
+      setNoteSuccess("Note added.");
+      setShowNoteForm(false);
+      await loadPatientNotes(selectedId);
+    } catch {
+      setNoteError("Network error while saving note.");
+    } finally {
+      setNoteSaving(false);
     }
   }
 
@@ -479,19 +542,49 @@ function PatientsSearchContent() {
 
               <section className="rx-summary-grid">
                 <div className="rx-summary-card">
-                  <h3 className="section-title">Previous Notes</h3>
-                  {!selectedPatient.notes && previousNotes.length === 0 ? <p className="hint">No notes available.</p> : null}
+                  <div className="panel-header">
+                    <h3 className="section-title">Previous Notes</h3>
+                    <button type="button" className="btn btn-soft btn-xs" onClick={() => setShowNoteForm(true)}>
+                      Add Note
+                    </button>
+                  </div>
+
+                  {showNoteForm ? (
+                    <form onSubmit={submitPatientNote} className="note-compose-form">
+                      <textarea
+                        value={noteText}
+                        onChange={(e) => setNoteText(e.target.value)}
+                        placeholder="Add visit note..."
+                      />
+                      <div className="rx-inline-actions">
+                        <button type="submit" className="btn btn-soft btn-xs" disabled={noteSaving}>
+                          {noteSaving ? "Saving..." : "Save Note"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-soft btn-xs"
+                          onClick={() => {
+                            setShowNoteForm(false);
+                            setNoteText("");
+                            setNoteError(null);
+                            setNoteSuccess(null);
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : null}
+
+                  {noteError ? <div className="msg error">{noteError}</div> : null}
+                  {noteSuccess ? <div className="msg success">{noteSuccess}</div> : null}
+                  {noteLoading ? <p className="hint">Loading notes...</p> : null}
+                  {!noteLoading && patientNotes.length === 0 ? <p className="hint">No notes available.</p> : null}
                   <ul className="rx-mini-list">
-                    {selectedPatient.notes ? (
-                      <li>
-                        <strong>Patient profile note</strong>
-                        <span>{selectedPatient.notes}</span>
-                      </li>
-                    ) : null}
-                    {previousNotes.map((note, index) => (
-                      <li key={`${index}-${note.slice(0, 10)}`}>
-                        <strong>Prescription note #{index + 1}</strong>
-                        <span>{note}</span>
+                    {patientNotes.map((note) => (
+                      <li key={note.id}>
+                        <strong>{formatDate(note.createdAt)}:</strong>
+                        <span>{note.note}</span>
                       </li>
                     ))}
                   </ul>

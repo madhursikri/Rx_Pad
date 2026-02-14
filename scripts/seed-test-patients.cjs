@@ -129,21 +129,126 @@ const TEST_PATIENTS = [
 ];
 
 const MEDICATIONS = [
-  { name: "Amoxicillin", commonStrengths: "250 mg, 500 mg" },
-  { name: "Azithromycin", commonStrengths: "250 mg, 500 mg" },
-  { name: "Metformin", commonStrengths: "500 mg, 850 mg, 1000 mg" },
-  { name: "Lisinopril", commonStrengths: "5 mg, 10 mg, 20 mg" },
-  { name: "Amlodipine", commonStrengths: "2.5 mg, 5 mg, 10 mg" },
-  { name: "Atorvastatin", commonStrengths: "10 mg, 20 mg, 40 mg" },
-  { name: "Levothyroxine", commonStrengths: "25 mcg, 50 mcg, 100 mcg" },
-  { name: "Omeprazole", commonStrengths: "20 mg, 40 mg" },
-  { name: "Ibuprofen", commonStrengths: "200 mg, 400 mg, 600 mg" },
-  { name: "Acetaminophen", commonStrengths: "325 mg, 500 mg" },
-  { name: "Losartan", commonStrengths: "25 mg, 50 mg, 100 mg" },
-  { name: "Hydrochlorothiazide", commonStrengths: "12.5 mg, 25 mg" },
-  { name: "Albuterol Inhaler", commonStrengths: "90 mcg/actuation" },
-  { name: "Sertraline", commonStrengths: "25 mg, 50 mg, 100 mg" },
-  { name: "Prednisone", commonStrengths: "5 mg, 10 mg, 20 mg" }
+  {
+    name: "Amoxicillin",
+    commonStrengths: "250 mg, 500 mg",
+    defaultDose: "1 capsule",
+    defaultFrequency: "Three times daily",
+    defaultDuration: "7 days",
+    defaultInstructions: "Take after food"
+  },
+  {
+    name: "Azithromycin",
+    commonStrengths: "250 mg, 500 mg",
+    defaultDose: "1 tablet",
+    defaultFrequency: "Once daily",
+    defaultDuration: "3 days",
+    defaultInstructions: "Take with water"
+  },
+  {
+    name: "Metformin",
+    commonStrengths: "500 mg, 850 mg, 1000 mg",
+    defaultDose: "1 tablet",
+    defaultFrequency: "Twice daily",
+    defaultDuration: "30 days",
+    defaultInstructions: "Take with meals"
+  },
+  {
+    name: "Lisinopril",
+    commonStrengths: "5 mg, 10 mg, 20 mg",
+    defaultDose: "1 tablet",
+    defaultFrequency: "Once daily",
+    defaultDuration: "30 days",
+    defaultInstructions: "Check blood pressure regularly"
+  },
+  {
+    name: "Amlodipine",
+    commonStrengths: "2.5 mg, 5 mg, 10 mg",
+    defaultDose: "1 tablet",
+    defaultFrequency: "Once daily",
+    defaultDuration: "30 days",
+    defaultInstructions: "Take at the same time each day"
+  },
+  {
+    name: "Atorvastatin",
+    commonStrengths: "10 mg, 20 mg, 40 mg",
+    defaultDose: "1 tablet",
+    defaultFrequency: "Once nightly",
+    defaultDuration: "30 days",
+    defaultInstructions: "Avoid grapefruit juice"
+  },
+  {
+    name: "Levothyroxine",
+    commonStrengths: "25 mcg, 50 mcg, 100 mcg",
+    defaultDose: "1 tablet",
+    defaultFrequency: "Once daily",
+    defaultDuration: "30 days",
+    defaultInstructions: "Take on empty stomach in the morning"
+  },
+  {
+    name: "Omeprazole",
+    commonStrengths: "20 mg, 40 mg",
+    defaultDose: "1 capsule",
+    defaultFrequency: "Once daily",
+    defaultDuration: "14 days",
+    defaultInstructions: "Take before breakfast"
+  },
+  {
+    name: "Ibuprofen",
+    commonStrengths: "200 mg, 400 mg, 600 mg",
+    defaultDose: "1 tablet",
+    defaultFrequency: "Every 8 hours as needed",
+    defaultDuration: "5 days",
+    defaultInstructions: "Take with food"
+  },
+  {
+    name: "Acetaminophen",
+    commonStrengths: "325 mg, 500 mg",
+    defaultDose: "1 tablet",
+    defaultFrequency: "Every 6 hours as needed",
+    defaultDuration: "5 days",
+    defaultInstructions: "Do not exceed max daily dose"
+  },
+  {
+    name: "Losartan",
+    commonStrengths: "25 mg, 50 mg, 100 mg",
+    defaultDose: "1 tablet",
+    defaultFrequency: "Once daily",
+    defaultDuration: "30 days",
+    defaultInstructions: "Monitor blood pressure"
+  },
+  {
+    name: "Hydrochlorothiazide",
+    commonStrengths: "12.5 mg, 25 mg",
+    defaultDose: "1 tablet",
+    defaultFrequency: "Once daily",
+    defaultDuration: "30 days",
+    defaultInstructions: "Take in the morning"
+  },
+  {
+    name: "Albuterol Inhaler",
+    commonStrengths: "90 mcg/actuation",
+    defaultDose: "2 puffs",
+    defaultFrequency: "Every 4-6 hours as needed",
+    defaultDuration: "30 days",
+    defaultInstructions: "Use spacer if available"
+  },
+  {
+    name: "Sertraline",
+    commonStrengths: "25 mg, 50 mg, 100 mg",
+    defaultDose: "1 tablet",
+    defaultFrequency: "Once daily",
+    defaultDuration: "30 days",
+    defaultInstructions: "Take at same time daily"
+  },
+  {
+    name: "Prednisone",
+    commonStrengths: "5 mg, 10 mg, 20 mg",
+    defaultDose: "1 tablet",
+    defaultFrequency: "Once daily",
+    defaultDuration: "5 days",
+    defaultInstructions: "Take with food"
+  }
 ];
 
 async function ensurePatient(patient) {
@@ -188,12 +293,28 @@ async function ensureMedication(medication) {
     where: { name: medication.name },
     select: { id: true }
   });
-  if (existing) return false;
+  if (existing) {
+    await prisma.medication.update({
+      where: { id: existing.id },
+      data: {
+        commonStrengths: medication.commonStrengths,
+        defaultDose: medication.defaultDose ?? null,
+        defaultFrequency: medication.defaultFrequency ?? null,
+        defaultDuration: medication.defaultDuration ?? null,
+        defaultInstructions: medication.defaultInstructions ?? null
+      }
+    });
+    return false;
+  }
 
   await prisma.medication.create({
     data: {
       name: medication.name,
-      commonStrengths: medication.commonStrengths
+      commonStrengths: medication.commonStrengths,
+      defaultDose: medication.defaultDose ?? null,
+      defaultFrequency: medication.defaultFrequency ?? null,
+      defaultDuration: medication.defaultDuration ?? null,
+      defaultInstructions: medication.defaultInstructions ?? null
     }
   });
   return true;
