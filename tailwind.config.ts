@@ -10,7 +10,7 @@ const config: Config = {
     extend: {
       colors: {
         ink: "#0f172a",
-        slate: "#475569",
+        brandSlate: "#475569",
         panel: "#f8fafc",
         sky: "#0ea5e9",
         line: "#dbe3ec"

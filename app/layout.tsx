@@ -1,42 +1,40 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Fraunces, Manrope } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 
-const bodyFont = Manrope({
+const bodyFont = Inter({
   subsets: ["latin"],
   variable: "--font-body"
 });
 
-const displayFont = Fraunces({
-  subsets: ["latin"],
-  variable: "--font-display"
-});
-
 export const metadata: Metadata = {
-  title: "Rx_Pad",
-  description: "Local clinic patient intake and search"
+  title: "Rx Pad",
+  description: "Local-first patient intake, search, prescriptions, and notes for a small practice."
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body className={`${bodyFont.variable} ${displayFont.variable}`}>
-        <header className="site-header">
-          <div className="shell header-row">
-            <Link href="/" className="brand">
-              <span>Rx_Pad</span>
+      <body className={`${bodyFont.variable}`}>
+        <div className="app-shell">
+          <aside className="app-sidebar" aria-label="Primary">
+            <div className="sidebar-brand">
+              <span>Rx Pad</span>
               <small>Clinical Workspace</small>
-            </Link>
-            <nav className="top-nav" aria-label="Primary">
+            </div>
+            <nav className="sidebar-nav">
+              <Link href="/">Dashboard</Link>
               <Link href="/patients/new">Add Patient</Link>
               <Link href="/patients">Search Patients</Link>
               <Link href="/prescription-dataset">Prescription Dataset</Link>
             </nav>
-          </div>
-        </header>
-        <main className="shell page-content">{children}</main>
+          </aside>
+          <main className="app-main">
+            <div className="page-content">{children}</div>
+          </main>
+        </div>
       </body>
     </html>
   );
