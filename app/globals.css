@@ -282,6 +282,26 @@ a {
   @apply mt-4 grid grid-cols-1 gap-3 xl:grid-cols-3;
 }
 
+.timeline-list {
+  @apply m-0 mt-3 grid list-none gap-2 p-0;
+}
+
+.timeline-item {
+  @apply rounded-2xl border border-slate-200 bg-slate-50 p-3;
+}
+
+.timeline-top {
+  @apply flex flex-wrap items-center justify-between gap-2;
+}
+
+.timeline-top strong {
+  @apply text-sm font-semibold text-slate-900;
+}
+
+.timeline-top span {
+  @apply text-xs font-medium text-slate-500;
+}
+
 .help-grid {
   @apply mt-4 grid gap-3;
 }
@@ -382,6 +402,10 @@ textarea {
 
 .msg.success {
   @apply border-emerald-200 bg-emerald-50 text-emerald-700;
+}
+
+.msg.warning {
+  @apply border-amber-200 bg-amber-50 text-amber-800;
 }
 
 .search-layout {

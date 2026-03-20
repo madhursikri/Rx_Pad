@@ -81,19 +81,32 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       );
     }
 
-    const created = await prisma.prescription.create({
-      data: {
-        patientId: id,
-        medicationId: medication.id,
-        medicationName: medication.name,
-        strength: input.strength,
-        dose: input.dose,
-        frequency: input.frequency,
-        duration: input.duration,
-        instructions: input.instructions,
-        isActive: true,
-        inactivatedAt: null
-      }
+    const created = await prisma.$transaction(async (tx) => {
+      const prescription = await tx.prescription.create({
+        data: {
+          patientId: id,
+          medicationId: medication.id,
+          medicationName: medication.name,
+          strength: input.strength,
+          dose: input.dose,
+          frequency: input.frequency,
+          duration: input.duration,
+          instructions: input.instructions,
+          isActive: true,
+          inactivatedAt: null
+        }
+      });
+
+      await tx.patientEvent.create({
+        data: {
+          patientId: id,
+          type: "PRESCRIPTION_CREATED",
+          title: "Prescription added",
+          details: `${medication.name} ${input.strength} added.`
+        }
+      });
+
+      return prescription;
     });
 
     return NextResponse.json(created, { status: 201 });

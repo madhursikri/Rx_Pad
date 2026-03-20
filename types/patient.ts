@@ -50,3 +50,11 @@ export type PatientNoteRecord = {
   note: string;
   createdAt: string;
 };
+
+export type PatientEventRecord = {
+  id: string;
+  type: string;
+  title: string;
+  details: string | null;
+  createdAt: string;
+};

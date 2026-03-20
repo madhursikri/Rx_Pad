@@ -80,7 +80,8 @@ export default function NewPatientPage() {
 
       setForm(initialState);
       setSuccess("Patient created successfully.");
-      router.push(`/patients?created=${payload.id}`);
+      const warning = Array.isArray(payload?.warnings) && payload.warnings.length > 0 ? payload.warnings.join(" ") : "";
+      router.push(`/patients?created=${payload.id}${warning ? `&warning=${encodeURIComponent(warning)}` : ""}`);
     } catch {
       setGlobalError("Network error. Please try again.");
     } finally {

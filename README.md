@@ -12,6 +12,7 @@ Local-first patient intake and search web app for a small medical practice.
   - date of birth (`YYYY-MM-DD`)
   - phone digits (local or full with country code)
 - View full patient demographics from search results
+- Edit patient records from the patient overview
 - Add prescriptions per selected patient:
   - search/select medication
   - enter strength, dose, frequency, duration, and instructions
@@ -19,6 +20,9 @@ Local-first patient intake and search web app for a small medical practice.
   - view active prescriptions and optional inactive history
 - Add patient visit notes directly from patient overview:
   - notes are timestamped and shown in reverse chronological order
+- Review a unified patient timeline for edits, notes, and prescription changes
+- Print or export a patient summary from the patient overview
+- Duplicate patient warnings during create/edit to reduce chart duplication
 - Prescription Dataset:
   - top-level screen to manage frequently used medication presets
   - add new medication entries with default dosage/frequency/duration/instructions
@@ -137,4 +141,4 @@ Copy-Item -Path .\backups\database\2026-02-13_14-34-14\dev.db -Destination .\pri
 
 ## Planned Next Scope
 
-- Prescription writing and management linked to patient records.
+- Multi-user access, richer audit reporting, and clinical reporting/export enhancements.

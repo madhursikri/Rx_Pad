@@ -40,12 +40,25 @@ export async function PATCH(
       return NextResponse.json({ message: "Prescription not found" }, { status: 404 });
     }
 
-    const updated = await prisma.prescription.update({
-      where: { id: prescriptionId },
-      data: {
-        isActive,
-        inactivatedAt: isActive ? null : new Date()
-      }
+    const updated = await prisma.$transaction(async (tx) => {
+      const prescription = await tx.prescription.update({
+        where: { id: prescriptionId },
+        data: {
+          isActive,
+          inactivatedAt: isActive ? null : new Date()
+        }
+      });
+
+      await tx.patientEvent.create({
+        data: {
+          patientId: id,
+          type: isActive ? "PRESCRIPTION_ACTIVATED" : "PRESCRIPTION_INACTIVATED",
+          title: isActive ? "Prescription activated" : "Prescription inactivated",
+          details: `${prescription.medicationName} ${isActive ? "marked active" : "marked inactive"}.`
+        }
+      });
+
+      return prescription;
     });
 
     return NextResponse.json(updated);

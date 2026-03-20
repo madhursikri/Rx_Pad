@@ -2,7 +2,15 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import type { MedicationOption, PatientDetail, PatientNoteRecord, PatientSummary, PrescriptionRecord } from "@/types/patient";
+import { COUNTRY_CODES, DEFAULT_COUNTRY_CODE } from "@/lib/country-codes";
+import type {
+  MedicationOption,
+  PatientDetail,
+  PatientEventRecord,
+  PatientNoteRecord,
+  PatientSummary,
+  PrescriptionRecord
+} from "@/types/patient";
 
 type PrescriptionFormState = {
   strength: string;
@@ -12,12 +20,44 @@ type PrescriptionFormState = {
   instructions: string;
 };
 
+type PatientEditFormState = {
+  firstName: string;
+  lastName: string;
+  dob: string;
+  gender: "male" | "female" | "other" | "prefer_not_to_say";
+  phoneCountryCode: string;
+  phone: string;
+  email: string;
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  notes: string;
+};
+
 const initialPrescriptionForm: PrescriptionFormState = {
   strength: "",
   dose: "",
   frequency: "",
   duration: "",
   instructions: ""
+};
+
+const initialPatientEditForm: PatientEditFormState = {
+  firstName: "",
+  lastName: "",
+  dob: "",
+  gender: "female",
+  phoneCountryCode: DEFAULT_COUNTRY_CODE,
+  phone: "",
+  email: "",
+  addressLine1: "",
+  addressLine2: "",
+  city: "",
+  state: "",
+  postalCode: "",
+  notes: ""
 };
 
 const defaultPrescriptionTemplate = {
@@ -31,6 +71,12 @@ function formatDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString();
+}
+
+function formatDateTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 }
 
 function formatPatientPhone(phoneCountryCode: string | null, phone: string | null): string {
@@ -52,6 +98,39 @@ function getAgeFromDob(dob: string): string {
   return age >= 0 ? `${age}` : "Unknown";
 }
 
+function toDateInputValue(value: string | Date): string {
+  const date = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+}
+
+function toPatientEditForm(patient: PatientDetail): PatientEditFormState {
+  return {
+    firstName: patient.firstName,
+    lastName: patient.lastName,
+    dob: toDateInputValue(patient.dob),
+    gender: patient.gender,
+    phoneCountryCode: patient.phoneCountryCode ?? DEFAULT_COUNTRY_CODE,
+    phone: patient.phone ?? "",
+    email: patient.email ?? "",
+    addressLine1: patient.addressLine1 ?? "",
+    addressLine2: patient.addressLine2 ?? "",
+    city: patient.city ?? "",
+    state: patient.state ?? "",
+    postalCode: patient.postalCode ?? "",
+    notes: patient.notes ?? ""
+  };
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function pickDefaultStrength(commonStrengths: string | null): string {
   if (!commonStrengths) return "";
   const first = commonStrengths
@@ -64,6 +143,7 @@ function pickDefaultStrength(commonStrengths: string | null): string {
 function PatientsSearchContent() {
   const searchParams = useSearchParams();
   const createdId = useMemo(() => searchParams.get("created"), [searchParams]);
+  const createdWarning = useMemo(() => searchParams.get("warning"), [searchParams]);
 
   const [query, setQuery] = useState("");
   const [patients, setPatients] = useState<PatientSummary[]>([]);
@@ -75,6 +155,9 @@ function PatientsSearchContent() {
 
   const [prescriptions, setPrescriptions] = useState<PrescriptionRecord[]>([]);
   const [prescriptionsLoading, setPrescriptionsLoading] = useState(false);
+  const [patientEvents, setPatientEvents] = useState<PatientEventRecord[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [timelineError, setTimelineError] = useState<string | null>(null);
 
   const [medicationQuery, setMedicationQuery] = useState("");
   const [medicationOptions, setMedicationOptions] = useState<MedicationOption[]>([]);
@@ -96,9 +179,17 @@ function PatientsSearchContent() {
   const [noteError, setNoteError] = useState<string | null>(null);
   const [noteSuccess, setNoteSuccess] = useState<string | null>(null);
   const [showNoteForm, setShowNoteForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editForm, setEditForm] = useState<PatientEditFormState>(initialPatientEditForm);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editSuccess, setEditSuccess] = useState<string | null>(null);
+  const [editWarnings, setEditWarnings] = useState<string[]>([]);
+  const [editFieldErrors, setEditFieldErrors] = useState<Record<string, string>>({});
 
   const activePrescriptions = useMemo(() => prescriptions.filter((item) => item.isActive), [prescriptions]);
   const inactivePrescriptions = useMemo(() => prescriptions.filter((item) => !item.isActive), [prescriptions]);
+  const timelineEvents = useMemo(() => [...patientEvents].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt)), [patientEvents]);
 
   async function loadPrescriptions(patientId: string) {
     setPrescriptionsLoading(true);
@@ -134,27 +225,49 @@ function PatientsSearchContent() {
     }
   }
 
+  async function loadPatientEvents(patientId: string) {
+    setEventsLoading(true);
+    setTimelineError(null);
+    try {
+      const response = await fetch(`/api/patients/${patientId}/events`);
+      const payload = (await response.json()) as PatientEventRecord[] | { message?: string };
+      if (!response.ok) {
+        setTimelineError((payload as { message?: string }).message ?? "Could not load patient timeline.");
+        return;
+      }
+      setPatientEvents(payload as PatientEventRecord[]);
+    } catch {
+      setTimelineError("Could not load patient timeline.");
+    } finally {
+      setEventsLoading(false);
+    }
+  }
+
+  async function loadPatients(searchValue: string, signal?: AbortSignal) {
+    setListLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/patients?query=${encodeURIComponent(searchValue)}`, {
+        signal
+      });
+      const payload = (await response.json()) as PatientSummary[] | { message?: string };
+      if (!response.ok) {
+        setError((payload as { message?: string }).message ?? "Failed to fetch patients.");
+        return;
+      }
+      setPatients(payload as PatientSummary[]);
+    } catch (fetchError: unknown) {
+      if (fetchError instanceof DOMException && fetchError.name === "AbortError") return;
+      setError("Could not load patients.");
+    } finally {
+      setListLoading(false);
+    }
+  }
+
   useEffect(() => {
     const controller = new AbortController();
     const timeout = window.setTimeout(async () => {
-      setListLoading(true);
-      setError(null);
-      try {
-        const response = await fetch(`/api/patients?query=${encodeURIComponent(query)}`, {
-          signal: controller.signal
-        });
-        const payload = (await response.json()) as PatientSummary[] | { message?: string };
-        if (!response.ok) {
-          setError((payload as { message?: string }).message ?? "Failed to fetch patients.");
-          return;
-        }
-        setPatients(payload as PatientSummary[]);
-      } catch (fetchError: unknown) {
-        if (fetchError instanceof DOMException && fetchError.name === "AbortError") return;
-        setError("Could not load patients.");
-      } finally {
-        setListLoading(false);
-      }
+      await loadPatients(query, controller.signal);
     }, 250);
 
     return () => {
@@ -174,8 +287,15 @@ function PatientsSearchContent() {
       setSelectedPatient(null);
       setPrescriptions([]);
       setPatientNotes([]);
+      setPatientEvents([]);
+      setEventsLoading(false);
+      setTimelineError(null);
       setShowAddPrescriptionForm(false);
       setShowNoteForm(false);
+      setShowEditForm(false);
+      setEditForm(initialPatientEditForm);
+      setEditFieldErrors({});
+      setEditWarnings([]);
       return;
     }
 
@@ -202,15 +322,28 @@ function PatientsSearchContent() {
     loadDetail();
     loadPrescriptions(selectedId);
     loadPatientNotes(selectedId);
+    loadPatientEvents(selectedId);
     setPrescriptionError(null);
     setPrescriptionSuccess(null);
     setNoteError(null);
     setNoteSuccess(null);
+    setEditError(null);
+    setEditSuccess(null);
+    setEditWarnings([]);
+    setEditFieldErrors({});
+    setTimelineError(null);
     setNoteText("");
     setShowAddPrescriptionForm(false);
     setShowNoteForm(false);
+    setShowEditForm(false);
     return () => controller.abort();
   }, [selectedId]);
+
+  useEffect(() => {
+    if (selectedPatient) {
+      setEditForm(toPatientEditForm(selectedPatient));
+    }
+  }, [selectedPatient]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -402,6 +535,138 @@ function PatientsSearchContent() {
     }
   }
 
+  function onEditChange<K extends keyof PatientEditFormState>(key: K, value: PatientEditFormState[K]) {
+    setEditForm((prev) => ({ ...prev, [key]: value }));
+    setEditFieldErrors((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }
+
+  async function submitPatientEdit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedId) return;
+
+    setEditSaving(true);
+    setEditError(null);
+    setEditSuccess(null);
+    setEditWarnings([]);
+    setEditFieldErrors({});
+
+    try {
+      const response = await fetch(`/api/patients/${selectedId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editForm)
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        if (payload?.fieldErrors && typeof payload.fieldErrors === "object") {
+          setEditFieldErrors(payload.fieldErrors as Record<string, string>);
+        }
+        if (Array.isArray(payload?.warnings)) {
+          setEditWarnings(payload.warnings as string[]);
+        }
+        setEditError(payload?.message ?? "Could not save patient.");
+        return;
+      }
+
+      const warnings = Array.isArray(payload?.warnings) ? (payload.warnings as string[]) : [];
+      setSelectedPatient(payload as PatientDetail);
+      setEditWarnings(warnings);
+      setEditSuccess("Patient updated successfully.");
+      setShowEditForm(true);
+      await loadPatients(query);
+      await loadPatientEvents(selectedId);
+    } catch {
+      setEditError("Network error while saving patient.");
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  function handlePrintSummary() {
+    if (!selectedPatient) return;
+
+    const popup = window.open("", "_blank", "width=900,height=700");
+    if (!popup) return;
+
+    const noteRows = patientNotes
+      .map(
+        (note) => `<li><strong>${escapeHtml(formatDateTime(note.createdAt))}</strong><br />${escapeHtml(note.note)}</li>`
+      )
+      .join("");
+    const activeRows = activePrescriptions
+      .map(
+        (item) =>
+          `<li><strong>${escapeHtml(item.medicationName)}</strong><br />${escapeHtml(item.strength)} | ${escapeHtml(item.dose)} | ${escapeHtml(item.frequency)} | ${escapeHtml(item.duration)}</li>`
+      )
+      .join("");
+    const inactiveRows = inactivePrescriptions
+      .map(
+        (item) =>
+          `<li><strong>${escapeHtml(item.medicationName)}</strong><br />${escapeHtml(item.strength)} | ${escapeHtml(item.dose)} | ${escapeHtml(item.frequency)} | ${escapeHtml(item.duration)}</li>`
+      )
+      .join("");
+    const timelineRows = timelineEvents
+      .map(
+        (item) =>
+          `<li><strong>${escapeHtml(formatDateTime(item.createdAt))}</strong> ${escapeHtml(item.title)}${item.details ? `<br />${escapeHtml(item.details)}` : ""}</li>`
+      )
+      .join("");
+
+    popup.document.write(`
+      <html>
+        <head>
+          <title>Patient Summary</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 24px; color: #0f172a; }
+            h1, h2, h3 { margin: 0 0 12px; }
+            section { margin-bottom: 20px; }
+            ul { margin: 8px 0 0; padding-left: 20px; }
+            li { margin-bottom: 10px; }
+            .meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 18px; }
+            .card { border: 1px solid #cbd5e1; border-radius: 12px; padding: 12px; }
+            .muted { color: #475569; }
+          </style>
+        </head>
+        <body>
+          <h1>Patient Summary</h1>
+          <section class="card">
+            <div class="meta">
+              <div><strong>Name:</strong> ${escapeHtml(selectedPatient.firstName)} ${escapeHtml(selectedPatient.lastName)}</div>
+              <div><strong>DOB:</strong> ${escapeHtml(formatDate(selectedPatient.dob))}</div>
+              <div><strong>Age:</strong> ${escapeHtml(getAgeFromDob(selectedPatient.dob))}</div>
+              <div><strong>Gender:</strong> ${escapeHtml(selectedPatient.gender.replace(/_/g, " "))}</div>
+              <div><strong>Phone:</strong> ${escapeHtml(formatPatientPhone(selectedPatient.phoneCountryCode, selectedPatient.phone))}</div>
+              <div><strong>Email:</strong> ${escapeHtml(selectedPatient.email ?? "Not provided")}</div>
+            </div>
+          </section>
+          <section>
+            <h2>Active Prescriptions</h2>
+            <ul>${activeRows || "<li class='muted'>No active prescriptions.</li>"}</ul>
+          </section>
+          <section>
+            <h2>Inactive Prescriptions</h2>
+            <ul>${inactiveRows || "<li class='muted'>No inactive prescriptions.</li>"}</ul>
+          </section>
+          <section>
+            <h2>Notes</h2>
+            <ul>${noteRows || "<li class='muted'>No notes available.</li>"}</ul>
+          </section>
+          <section>
+            <h2>Timeline</h2>
+            <ul>${timelineRows || "<li class='muted'>No timeline events available.</li>"}</ul>
+          </section>
+          <script>window.onload = function() { window.print(); };</script>
+        </body>
+      </html>
+    `);
+    popup.document.close();
+  }
+
   function focusPrescriptionForm() {
     setShowAddPrescriptionForm(true);
     const target = document.getElementById("add-prescription");
@@ -441,6 +706,7 @@ function PatientsSearchContent() {
             </label>
 
             {createdId ? <div className="msg success">Patient saved successfully.</div> : null}
+            {createdWarning ? <div className="msg warning">{createdWarning}</div> : null}
             {error ? <div className="msg error">{error}</div> : null}
 
             <ul className="patient-list" aria-live="polite">
@@ -499,6 +765,23 @@ function PatientsSearchContent() {
           {selectedPatient ? (
             <>
               <div className="actions">
+                <button
+                  type="button"
+                  className="btn btn-soft"
+                  onClick={() => {
+                    setEditForm(toPatientEditForm(selectedPatient));
+                    setShowEditForm((prev) => !prev);
+                    setEditError(null);
+                    setEditSuccess(null);
+                    setEditWarnings([]);
+                    setEditFieldErrors({});
+                  }}
+                >
+                  {showEditForm ? "Close Edit" : "Edit Patient"}
+                </button>
+                <button type="button" className="btn btn-soft" onClick={handlePrintSummary}>
+                  Print Summary
+                </button>
                 <button type="button" className="btn btn-soft" onClick={focusPrescriptionForm}>
                   Add New Prescription
                 </button>
@@ -512,10 +795,167 @@ function PatientsSearchContent() {
                     setSelectedMedication(null);
                     setPrescriptionForm(initialPrescriptionForm);
                   }}
-                >
-                  Change Patient
-                </button>
+                  >
+                    Change Patient
+                  </button>
               </div>
+
+              {showEditForm ? (
+                <section className="rx-block">
+                  <div className="panel-header">
+                    <h3 className="section-title">Edit Patient</h3>
+                    <span className="section-chip">Update demographics</span>
+                  </div>
+
+                  {editWarnings.length > 0 ? (
+                    <div className="msg warning">
+                      {editWarnings.map((warning) => (
+                        <div key={warning}>{warning}</div>
+                      ))}
+                    </div>
+                  ) : null}
+                  {editError ? <div className="msg error">{editError}</div> : null}
+                  {editSuccess ? <div className="msg success">{editSuccess}</div> : null}
+
+                  <form className="patient-edit-form" onSubmit={submitPatientEdit} noValidate>
+                    <div className="field-grid">
+                      <label>
+                        <span className="required">First Name</span>
+                        <input
+                          type="text"
+                          value={editForm.firstName}
+                          onChange={(e) => onEditChange("firstName", e.target.value)}
+                        />
+                        {editFieldErrors.firstName ? <span className="field-error">{editFieldErrors.firstName}</span> : null}
+                      </label>
+
+                      <label>
+                        <span className="required">Last Name</span>
+                        <input
+                          type="text"
+                          value={editForm.lastName}
+                          onChange={(e) => onEditChange("lastName", e.target.value)}
+                        />
+                        {editFieldErrors.lastName ? <span className="field-error">{editFieldErrors.lastName}</span> : null}
+                      </label>
+
+                      <label>
+                        <span className="required">Date of Birth</span>
+                        <input
+                          type="date"
+                          value={editForm.dob}
+                          onChange={(e) => onEditChange("dob", e.target.value)}
+                        />
+                        {editFieldErrors.dob ? <span className="field-error">{editFieldErrors.dob}</span> : null}
+                      </label>
+
+                      <label>
+                        <span className="required">Gender</span>
+                        <select
+                          value={editForm.gender}
+                          onChange={(e) => onEditChange("gender", e.target.value as PatientEditFormState["gender"])}
+                        >
+                          <option value="female">Female</option>
+                          <option value="male">Male</option>
+                          <option value="other">Other</option>
+                          <option value="prefer_not_to_say">Prefer not to say</option>
+                        </select>
+                        {editFieldErrors.gender ? <span className="field-error">{editFieldErrors.gender}</span> : null}
+                      </label>
+
+                      <div className="full section-divider">Contact</div>
+
+                      <label>
+                        <span>Phone</span>
+                        <div className="phone-input-group">
+                          <select
+                            aria-label="Phone country code"
+                            value={editForm.phoneCountryCode}
+                            onChange={(e) => onEditChange("phoneCountryCode", e.target.value)}
+                          >
+                            {COUNTRY_CODES.map((entry) => (
+                              <option key={entry.code} value={entry.code}>
+                                {entry.label}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="tel"
+                            value={editForm.phone}
+                            onChange={(e) => onEditChange("phone", e.target.value)}
+                            placeholder="Local number"
+                          />
+                        </div>
+                        {editFieldErrors.phoneCountryCode ? (
+                          <span className="field-error">{editFieldErrors.phoneCountryCode}</span>
+                        ) : null}
+                        {editFieldErrors.phone ? <span className="field-error">{editFieldErrors.phone}</span> : null}
+                      </label>
+
+                      <label>
+                        <span>Email</span>
+                        <input
+                          type="email"
+                          value={editForm.email}
+                          onChange={(e) => onEditChange("email", e.target.value)}
+                        />
+                      </label>
+
+                      <div className="full section-divider">Address</div>
+
+                      <label className="full">
+                        <span>Address Line 1</span>
+                        <input
+                          type="text"
+                          value={editForm.addressLine1}
+                          onChange={(e) => onEditChange("addressLine1", e.target.value)}
+                        />
+                      </label>
+
+                      <label className="full">
+                        <span>Address Line 2</span>
+                        <input
+                          type="text"
+                          value={editForm.addressLine2}
+                          onChange={(e) => onEditChange("addressLine2", e.target.value)}
+                        />
+                      </label>
+
+                      <label>
+                        <span>City</span>
+                        <input type="text" value={editForm.city} onChange={(e) => onEditChange("city", e.target.value)} />
+                      </label>
+
+                      <label>
+                        <span>State</span>
+                        <input type="text" value={editForm.state} onChange={(e) => onEditChange("state", e.target.value)} />
+                      </label>
+
+                      <label>
+                        <span>Postal Code</span>
+                        <input
+                          type="text"
+                          value={editForm.postalCode}
+                          onChange={(e) => onEditChange("postalCode", e.target.value)}
+                        />
+                      </label>
+
+                      <div className="full section-divider">Additional Notes</div>
+
+                      <label className="full">
+                        <span>Notes</span>
+                        <textarea value={editForm.notes} onChange={(e) => onEditChange("notes", e.target.value)} />
+                      </label>
+                    </div>
+
+                    <div className="actions">
+                      <button type="submit" className="btn" disabled={editSaving}>
+                        {editSaving ? "Saving..." : "Save Patient Changes"}
+                      </button>
+                    </div>
+                  </form>
+                </section>
+              ) : null}
 
               <div className="demographics-inline">
                 <div className="demographic-pill">
@@ -539,6 +979,27 @@ function PatientsSearchContent() {
                   <strong>{formatPatientPhone(selectedPatient.phoneCountryCode, selectedPatient.phone)}</strong>
                 </div>
               </div>
+
+              <section className="rx-block">
+                <div className="panel-header">
+                  <h3 className="section-title">Patient Timeline</h3>
+                  <span className="section-chip">{eventsLoading ? "Loading..." : `${timelineEvents.length} events`}</span>
+                </div>
+                {timelineError ? <div className="msg warning">{timelineError}</div> : null}
+                {eventsLoading ? <p className="hint">Loading timeline...</p> : null}
+                {!eventsLoading && timelineEvents.length === 0 ? <p className="hint">No timeline events available.</p> : null}
+                <ul className="timeline-list">
+                  {timelineEvents.map((event) => (
+                    <li key={event.id} className="timeline-item">
+                      <div className="timeline-top">
+                        <strong>{event.title}</strong>
+                        <span>{formatDateTime(event.createdAt)}</span>
+                      </div>
+                      <p>{event.details ?? event.type.replace(/_/g, " ").toLowerCase()}</p>
+                    </li>
+                  ))}
+                </ul>
+              </section>
 
               <section className="rx-summary-grid">
                 <div className="rx-summary-card">

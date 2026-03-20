@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createPatientSchema, formatZodErrors, parseLimit } from "@/lib/patient-validation";
 import { normalizePhone, toDobRange } from "@/lib/patient-utils";
+import { findDuplicatePatientWarnings } from "@/lib/patient-records";
 
 export async function POST(req: NextRequest) {
   let body: unknown;
@@ -24,10 +25,24 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const created = await prisma.patient.create({
-      data: result.data
+    const warnings = await findDuplicatePatientWarnings(prisma, result.data);
+    const created = await prisma.$transaction(async (tx) => {
+      const patient = await tx.patient.create({
+        data: result.data
+      });
+
+      await tx.patientEvent.create({
+        data: {
+          patientId: patient.id,
+          type: "PATIENT_CREATED",
+          title: "Patient created",
+          details: "Created a new patient record."
+        }
+      });
+
+      return patient;
     });
-    return NextResponse.json(created, { status: 201 });
+    return NextResponse.json({ ...created, warnings }, { status: 201 });
   } catch (error) {
     console.error("Failed to create patient", error);
     return NextResponse.json({ message: "Could not create patient" }, { status: 500 });

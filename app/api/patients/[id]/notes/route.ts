@@ -72,16 +72,29 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       return NextResponse.json({ message: "Patient not found" }, { status: 404 });
     }
 
-    const created = await prisma.patientNote.create({
-      data: {
-        patientId: id,
-        note: result.data.note
-      },
-      select: {
-        id: true,
-        note: true,
-        createdAt: true
-      }
+    const created = await prisma.$transaction(async (tx) => {
+      const note = await tx.patientNote.create({
+        data: {
+          patientId: id,
+          note: result.data.note
+        },
+        select: {
+          id: true,
+          note: true,
+          createdAt: true
+        }
+      });
+
+      await tx.patientEvent.create({
+        data: {
+          patientId: id,
+          type: "NOTE_CREATED",
+          title: "Note added",
+          details: note.note.length > 120 ? `${note.note.slice(0, 117)}...` : note.note
+        }
+      });
+
+      return note;
     });
 
     return NextResponse.json(created, { status: 201 });

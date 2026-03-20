@@ -32,15 +32,6 @@ export const createPatientSchema = z
     const hasPhone = !!data.phone && data.phone.trim().length > 0;
     const hasCode = !!data.phoneCountryCode && data.phoneCountryCode.trim().length > 0;
 
-    if (!hasPhone && hasCode) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["phone"],
-        message: "Enter a phone number when selecting a country code"
-      });
-      return;
-    }
-
     if (!hasPhone) return;
 
     const normalizedPhone = normalizePhone(data.phone ?? "");
