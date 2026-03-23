@@ -3,4 +3,7 @@ compatibility_date = "2026-03-22"
 compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = "out"
 
-# Production D1 binding should be configured in the Cloudflare Pages dashboard.
+[[d1_databases]]
+binding = "DB"
+database_name = "rx-pad"
+database_id = "7e1a7c7a-f70f-4a09-9ea6-3d2b5cfc47d2"

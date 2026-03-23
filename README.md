@@ -29,9 +29,11 @@ After that, Cloudflare handles the rest.
    - Build command: `npm run build`
    - Build output directory: `out`
 10. Create a new **D1** database in Cloudflare.
-11. Bind that database to the Pages project with the binding name `DB`.
-12. Save and deploy the project.
-13. Open the Cloudflare Pages URL that gets created.
+11. Copy the database ID from the D1 database details page.
+12. Paste that ID into [wrangler.toml](/c:/Users/madhu/git/Rx_Pad/wrangler.toml) in the `database_id` field.
+13. Save the file and push the change to GitHub.
+14. Save and deploy the Pages project.
+15. Open the Cloudflare Pages URL that gets created.
 
 ## Cloudflare Pages
 
@@ -44,12 +46,14 @@ When you create the Pages project, use these values:
 - Build command: `npm run build`
 - Build output directory: `out`
 - D1 binding name: `DB`
+- D1 database ID: set in [wrangler.toml](/c:/Users/madhu/git/Rx_Pad/wrangler.toml)
 
 Recommended project behavior:
 
 - Enable automatic deployments from GitHub.
 - Leave the app public so users can open the Pages URL directly.
 - Do not add a separate API server; the app already serves its own API routes through Pages Functions.
+- If the dashboard says bindings are managed through `wrangler.toml`, that is expected. Use the repo file instead of the UI.
 
 If Cloudflare asks for an environment variable or optional setting you do not understand, leave it blank unless you know the app needs it.
 
