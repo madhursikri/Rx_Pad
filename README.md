@@ -1,61 +1,104 @@
 # Rx_Pad
 
-Rx Pad is a local-first patient intake and prescription management app for a small medical practice.
+Rx Pad is a browser-based patient intake and prescription workflow app that can be deployed on Cloudflare Pages.
 
-## Source Code
+## What Cloudflare Will Handle
 
-This repository contains the app source code, schema, scripts, and local development helpers.
+- Hosting the web app
+- Deploying automatically from GitHub on every push
+- Running the API endpoints through Pages Functions
+- Providing the D1 database backing store
+- Creating the database tables and starter records automatically on first app use
 
-## Development
+## One-Time Cloudflare Setup
 
-Install Node.js LTS, then from the project root:
+You still need to create the Cloudflare project and attach the D1 database once.
+After that, Cloudflare handles the rest.
 
-```cmd
+## Step By Step Deployment
+
+1. Push this repository to GitHub.
+2. Sign in to Cloudflare.
+3. Go to **Workers & Pages**.
+4. Select **Create application**.
+5. Choose **Pages**.
+6. Select **Connect to Git**.
+7. Pick your GitHub account and this repository.
+8. Set the branch to deploy, usually `main`.
+9. Use these build settings:
+   - Build command: `npm run build`
+   - Build output directory: `out`
+10. Create a new **D1** database in Cloudflare.
+11. Bind that database to the Pages project with the binding name `DB`.
+12. Save and deploy the project.
+13. Open the Cloudflare Pages URL that gets created.
+
+## Cloudflare Pages
+
+When you create the Pages project, use these values:
+
+- Project type: `Pages`
+- Source: `GitHub`
+- Repository: this `Rx_Pad` repo
+- Branch: `main` or your production branch
+- Build command: `npm run build`
+- Build output directory: `out`
+- D1 binding name: `DB`
+
+Recommended project behavior:
+
+- Enable automatic deployments from GitHub.
+- Leave the app public so users can open the Pages URL directly.
+- Do not add a separate API server; the app already serves its own API routes through Pages Functions.
+
+If Cloudflare asks for an environment variable or optional setting you do not understand, leave it blank unless you know the app needs it.
+
+## What Happens On First Launch
+
+The first time the app receives a request, it will:
+
+- create the database tables in D1
+- seed the default medication list
+- seed the starter patient records
+
+That means there is no manual schema migration step after deployment.
+
+## Ongoing Workflow
+
+- Push changes to GitHub.
+- Cloudflare redeploys automatically.
+- Users open the Pages URL in a browser.
+
+## Local Development
+
+Install dependencies:
+
+```bash
 npm install
 ```
 
-Start the app in development:
+Run the app locally:
 
-```cmd
+```bash
 npm run dev
 ```
 
-Or use the clinic helper script:
+Build the static site:
 
-```cmd
-start-rx-pad.cmd
+```bash
+npm run build
 ```
 
-The helper script:
+Preview with Cloudflare Pages locally:
 
-- creates `.env` from `.env.example` if needed
-- installs dependencies
-- generates the Prisma client
-- applies migrations
-- seeds test data
-- runs a local backup when `prisma/dev.db` exists
-- builds the app
-- starts the local server
-
-## Data And Backups
-
-Development database:
-
-- `prisma/dev.db`
-
-Manual backup command:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\backup-db.ps1
+```bash
+npm run pages:dev
 ```
 
-Retention:
-
-- keeps the most recent 10 backup snapshots
+The repository includes a minimal [wrangler.toml](/c:/Users/madhu/git/Rx_Pad/wrangler.toml) for local Cloudflare development.
 
 ## Notes
 
-- Designed for local-machine use only.
-- No authentication in v1.
-- Not internet-exposed.
-- No generated release files should be committed.
+- This repo is Cloudflare Pages focused.
+- The old Windows installer and Prisma/SQLite runtime files were removed.
+- No generated build output should be committed.

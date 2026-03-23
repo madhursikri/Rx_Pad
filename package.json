@@ -2,32 +2,23 @@
   "name": "rx_pad",
   "version": "1.0.0",
   "private": true,
-  "description": "Local-first patient intake and prescription management for a small medical practice.",
+  "description": "Cloudflare Pages patient intake and prescription management for a small medical practice.",
   "author": "Rx Pad",
-  "main": "electron/main.cjs",
   "scripts": {
     "dev": "next dev -H 127.0.0.1 -p 3000",
-    "build": "prisma generate && next build",
-    "start": "next start -H 127.0.0.1 -p 3000",
+    "build": "next build",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:deploy": "prisma migrate deploy",
-    "seed:test": "node scripts/seed-test-patients.cjs",
-    "dist:win": "npm run build && electron-builder --win portable && node scripts/cleanup-release.cjs"
+    "typecheck": "next build && tsc --noEmit",
+    "pages:dev": "npm run build && wrangler pages dev out"
   },
   "dependencies": {
-    "@prisma/client": "^6.3.1",
     "next": "^15.1.7",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "prisma": "^6.3.1",
     "zod": "^3.24.1"
   },
   "devDependencies": {
-    "electron": "^35.0.0",
-    "electron-builder": "^25.1.8",
+    "@cloudflare/workers-types": "^4.20250317.0",
     "@types/node": "^22.13.1",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
@@ -35,36 +26,8 @@
     "eslint": "^9.19.0",
     "eslint-config-next": "^15.1.7",
     "postcss": "^8.5.1",
+    "wrangler": "^4.12.0",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3"
-  },
-  "build": {
-    "appId": "com.rxpad.app",
-    "productName": "Rx Pad",
-    "artifactName": "${productName}.${ext}",
-    "asar": false,
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "app/**/*",
-      "electron/**/*",
-      "lib/**/*",
-      "prisma/**/*",
-      "public/**/*",
-      "scripts/seed-test-patients.cjs",
-      "types/**/*",
-      "next.config.mjs",
-      "package.json",
-      ".next/**/*",
-      "!backups/**/*",
-      "!prisma/dev.db*",
-      "!release/**/*",
-      "!**/*.map"
-    ],
-    "win": {
-      "target": "portable",
-      "signAndEditExecutable": false
-    }
   }
 }

@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { COUNTRY_CODES, DEFAULT_COUNTRY_CODE } from "@/lib/country-codes";
+import type { ApiResponse } from "@/lib/api-response";
 import type {
   MedicationOption,
   PatientDetail,
@@ -449,7 +450,7 @@ function PatientsSearchContent() {
         })
       });
 
-      const payload = await response.json();
+      const payload = (await response.json()) as ApiResponse<PrescriptionRecord>;
       if (!response.ok) {
         if (payload?.fieldErrors && typeof payload.fieldErrors === "object") {
           setPrescriptionFieldErrors(payload.fieldErrors as Record<string, string>);
@@ -483,7 +484,7 @@ function PatientsSearchContent() {
         body: JSON.stringify({ isActive: makeActive })
       });
 
-      const payload = await response.json();
+      const payload = (await response.json()) as ApiResponse<PrescriptionRecord>;
       if (!response.ok) {
         setPrescriptionError(payload?.message ?? "Could not update prescription status.");
         return;
@@ -518,7 +519,7 @@ function PatientsSearchContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ note: trimmed })
       });
-      const payload = await response.json();
+      const payload = (await response.json()) as ApiResponse<PatientNoteRecord>;
       if (!response.ok) {
         setNoteError(payload?.message ?? "Could not save note.");
         return;
@@ -561,7 +562,7 @@ function PatientsSearchContent() {
         body: JSON.stringify(editForm)
       });
 
-      const payload = await response.json();
+      const payload = (await response.json()) as ApiResponse<PatientDetail & { warnings?: string[] }>;
       if (!response.ok) {
         if (payload?.fieldErrors && typeof payload.fieldErrors === "object") {
           setEditFieldErrors(payload.fieldErrors as Record<string, string>);

@@ -18,3 +18,5 @@ export const createMedicationSchema = z
     defaultDuration: data.defaultDuration.trim(),
     defaultInstructions: toNullableTrimmed(data.defaultInstructions)
   }));
+
+export type CreateMedicationInput = z.infer<typeof createMedicationSchema>;

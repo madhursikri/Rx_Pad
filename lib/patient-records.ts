@@ -1,28 +1,9 @@
-import type { PrismaClient } from "@prisma/client";
 import type { CreatePatientInput } from "@/lib/patient-validation";
-
-type PatientLookup = {
-  patient: {
-    findMany: (args: {
-      where?: Record<string, unknown>;
-      select?: Record<string, unknown>;
-    }) => Promise<
-      Array<{
-        id: string;
-        firstName: string;
-        lastName: string;
-        dob: Date;
-        phone: string | null;
-        phoneE164: string | null;
-      }>
-    >;
-  };
-};
 
 type PatientSnapshot = {
   firstName: string;
   lastName: string;
-  dob: Date;
+  dob: Date | string;
   gender: CreatePatientInput["gender"];
   phoneCountryCode: string | null;
   phone: string | null;
@@ -42,7 +23,7 @@ export function describePatientChanges(before: PatientSnapshot, after: PatientSn
   if (before.firstName !== after.firstName || before.lastName !== after.lastName) {
     changes.push("name");
   }
-  if (before.dob.toISOString() !== after.dob.toISOString()) {
+  if (new Date(before.dob).toISOString() !== new Date(after.dob).toISOString()) {
     changes.push("date of birth");
   }
   if (before.gender !== after.gender) {
@@ -65,74 +46,4 @@ export function describePatientChanges(before: PatientSnapshot, after: PatientSn
   }
 
   return changes;
-}
-
-export async function findDuplicatePatientWarnings(
-  prisma: PatientLookup,
-  input: Pick<CreatePatientInput, "firstName" | "lastName" | "dob" | "phoneCountryCode" | "phone" | "phoneE164">,
-  excludePatientId?: string
-): Promise<string[]> {
-  const where: Record<string, unknown> = {
-    id: excludePatientId ? { not: excludePatientId } : undefined,
-    OR: [
-      {
-        AND: [
-          { firstName: input.firstName },
-          { lastName: input.lastName },
-          { dob: input.dob }
-        ]
-      }
-    ]
-  };
-
-  if (input.phone) {
-    (where.OR as Array<Record<string, unknown>>).push({
-      phone: input.phone
-    });
-  }
-
-  if (input.phoneE164) {
-    (where.OR as Array<Record<string, unknown>>).push({
-      phoneE164: input.phoneE164
-    });
-  }
-
-  const matches = await prisma.patient.findMany({
-    where,
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      dob: true,
-      phone: true,
-      phoneE164: true
-    }
-  });
-
-  const warnings: string[] = [];
-  const sameNameDob = matches.some(
-    (match) =>
-      match.firstName === input.firstName &&
-      match.lastName === input.lastName &&
-      match.dob.toISOString() === input.dob.toISOString()
-  );
-  const samePhone = Boolean(
-    input.phoneE164 &&
-      matches.some((match) => match.phoneE164 === input.phoneE164 || match.phone === input.phone)
-  );
-
-  if (sameNameDob) {
-    warnings.push("A patient with the same name and date of birth already exists.");
-  }
-  if (samePhone) {
-    warnings.push("A patient with the same phone number already exists.");
-  }
-
-  return warnings;
-}
-
-export async function findPatientById(prisma: PrismaClient, id: string) {
-  return prisma.patient.findUnique({
-    where: { id }
-  });
 }

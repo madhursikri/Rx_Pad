@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { ApiResponse } from "@/lib/api-response";
 import type { MedicationOption } from "@/types/patient";
 
 type MedicationFormState = {
@@ -105,7 +106,7 @@ export default function PrescriptionDatasetPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form)
       });
-      const payload = await response.json();
+      const payload = (await response.json()) as ApiResponse<MedicationOption>;
       if (!response.ok) {
         if (payload?.fieldErrors && typeof payload.fieldErrors === "object") {
           setFieldErrors(payload.fieldErrors as Record<string, string>);
@@ -137,7 +138,7 @@ export default function PrescriptionDatasetPage() {
       const response = await fetch(`/api/medications/${editingEntryId}`, {
         method: "DELETE"
       });
-      const payload = await response.json();
+      const payload = (await response.json()) as ApiResponse<{ success?: boolean }>;
       if (!response.ok) {
         setError(payload?.message ?? "Could not delete prescription dataset entry.");
         return;

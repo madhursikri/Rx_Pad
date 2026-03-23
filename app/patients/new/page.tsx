@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { COUNTRY_CODES, DEFAULT_COUNTRY_CODE } from "@/lib/country-codes";
+import type { ApiResponse } from "@/lib/api-response";
 
 type FormState = {
   firstName: string;
@@ -69,7 +70,7 @@ export default function NewPatientPage() {
         body: JSON.stringify(form)
       });
 
-      const payload = await response.json();
+      const payload = (await response.json()) as ApiResponse<{ id: string; warnings?: string[] }>;
       if (!response.ok) {
         if (payload?.fieldErrors && typeof payload.fieldErrors === "object") {
           setFieldErrors(payload.fieldErrors as Record<string, string>);
