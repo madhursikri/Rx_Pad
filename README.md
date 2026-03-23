@@ -1,144 +1,61 @@
 # Rx_Pad
 
-Local-first patient intake and search web app for a small medical practice.
+Rx Pad is a local-first patient intake and prescription management app for a small medical practice.
 
-## Features in v1
+## Source Code
 
-- Add a new patient with:
-  - required: first name, last name, date of birth, gender
-  - optional: phone (country code + local number), email, address, notes
-- Search patients instantly by:
-  - name
-  - date of birth (`YYYY-MM-DD`)
-  - phone digits (local or full with country code)
-- View full patient demographics from search results
-- Edit patient records from the patient overview
-- Add prescriptions per selected patient:
-  - search/select medication
-  - enter strength, dose, frequency, duration, and instructions
-  - mark prescriptions active/inactive (without deleting history)
-  - view active prescriptions and optional inactive history
-- Add patient visit notes directly from patient overview:
-  - notes are timestamped and shown in reverse chronological order
-- Review a unified patient timeline for edits, notes, and prescription changes
-- Print or export a patient summary from the patient overview
-- Duplicate patient warnings during create/edit to reduce chart duplication
-- Prescription Dataset:
-  - top-level screen to manage frequently used medication presets
-  - add new medication entries with default dosage/frequency/duration/instructions
-  - select existing entries to edit and save updates
-  - delete dataset entries that are no longer needed
-  - newly added entries appear in patient prescription search immediately
+This repository contains the app source code, schema, scripts, and local development helpers.
 
-## Tech Stack
+## Development
 
-- Next.js (App Router, TypeScript)
-- Prisma ORM
-- SQLite (`prisma/dev.db`)
-- Zod validation
-- Tailwind CSS
-
-## Local Setup (Clinic Machine)
-
-1. Install Node.js LTS.
-2. Open terminal in `C:\Users\madhu\git\Rx_Pad`.
-3. Run one command:
+Install Node.js LTS, then from the project root:
 
 ```cmd
-start-rx-pad.cmd
+npm install
 ```
 
-This script handles all required startup steps automatically:
-
-- creates `.env` from `.env.example` if missing
-- installs dependencies
-- generates Prisma client
-- applies migrations
-- seeds test data:
-  - 15 medications for search/select
-  - 10 test patients with varied demographic permutations
-- runs an automatic SQLite backup (if `prisma/dev.db` exists)
-- builds the app
-- starts the app on `http://localhost:3000`
-
-## Day-to-Day Run
-
-Use the same single command from project root:
+Start the app in development:
 
 ```cmd
-start-rx-pad.cmd
-```
-
-## Development Run
-
-```bash
 npm run dev
 ```
 
-## API Endpoints
+Or use the clinic helper script:
 
-- `POST /api/patients`
-  - Creates patient
-  - Returns `201` and patient JSON
-  - Returns `400` with `fieldErrors` on validation failure
-- `GET /api/patients?query=&limit=`
-  - Returns recent patients when `query` is empty
-  - Otherwise searches by name/DOB/phone
-- `GET /api/patients/:id`
-  - Returns full patient details
+```cmd
+start-rx-pad.cmd
+```
 
-## Backup Routine (Local SQLite)
+The helper script:
 
-Database file to protect:
+- creates `.env` from `.env.example` if needed
+- installs dependencies
+- generates the Prisma client
+- applies migrations
+- seeds test data
+- runs a local backup when `prisma/dev.db` exists
+- builds the app
+- starts the local server
+
+## Data And Backups
+
+Development database:
 
 - `prisma/dev.db`
 
-Recommended daily backup path:
-
-- `Rx_Pad\backups\database\YYYY-MM-DD_HH-mm-ss\dev.db`
-
-Retention policy:
-
-- backup script keeps only the most recent 10 backup snapshots
-- older snapshots are deleted automatically
-
-### Manual Backup Command
-
-From project root:
+Manual backup command:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\backup-db.ps1
 ```
 
-### Recovery Procedure
+Retention:
 
-1. Stop the running app (close terminal running `npm run start` / `start-rx-pad.cmd`).
-2. Pick the backup snapshot you want from:
-   - `Rx_Pad\backups\database\YYYY-MM-DD_HH-mm-ss\dev.db`
-3. From project root, restore it over the live DB:
+- keeps the most recent 10 backup snapshots
 
-```powershell
-Copy-Item -Path .\backups\database\<SNAPSHOT_FOLDER>\dev.db -Destination .\prisma\dev.db -Force
-```
+## Notes
 
-4. Start app again:
-
-```cmd
-start-rx-pad.cmd
-```
-
-Example:
-
-```powershell
-Copy-Item -Path .\backups\database\2026-02-13_14-34-14\dev.db -Destination .\prisma\dev.db -Force
-```
-
-## Security/Scope Notes
-
-- Designed for local-machine use only in v1 (`localhost`).
-- No authentication in this phase (single-practice workflow).
-- Not internet-exposed and not a full HIPAA-hardened deployment yet.
-
-## Planned Next Scope
-
-- Multi-user access, richer audit reporting, and clinical reporting/export enhancements.
+- Designed for local-machine use only.
+- No authentication in v1.
+- Not internet-exposed.
+- No generated release files should be committed.

@@ -5,6 +5,9 @@ dist/
 coverage/
 *.log
 *.tsbuildinfo
+.next/
+release/
+backups/
 .env
 .env.local
 prisma/dev.db

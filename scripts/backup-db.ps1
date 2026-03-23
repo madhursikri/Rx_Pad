@@ -6,11 +6,19 @@ param(
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 
 if ([string]::IsNullOrWhiteSpace($Source)) {
-  $Source = Join-Path $repoRoot "prisma\\dev.db"
+  if (-not [string]::IsNullOrWhiteSpace($env:RX_PAD_DB_PATH)) {
+    $Source = $env:RX_PAD_DB_PATH
+  } else {
+    $Source = Join-Path $repoRoot "prisma\\dev.db"
+  }
 }
 
 if ([string]::IsNullOrWhiteSpace($BackupRoot)) {
-  $BackupRoot = Join-Path $repoRoot "backups\\database"
+  if (-not [string]::IsNullOrWhiteSpace($env:RX_PAD_BACKUP_ROOT)) {
+    $BackupRoot = $env:RX_PAD_BACKUP_ROOT
+  } else {
+    $BackupRoot = Join-Path $repoRoot "backups\\database"
+  }
 }
 
 if (-Not (Test-Path $Source)) {
