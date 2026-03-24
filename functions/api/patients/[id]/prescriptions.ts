@@ -40,8 +40,9 @@ export async function onRequestPost(context: { request: Request; env: Env; param
   }
 
   try {
+    const allowDuplicate = typeof body === "object" && body !== null && "allowDuplicate" in body ? body.allowDuplicate === true : false;
     const input = createPrescriptionSchema.parse(body);
-    const result = await createPrescription(context.env.DB, id, input);
+    const result = await createPrescription(context.env.DB, id, input, { allowDuplicate });
 
     if (result.status === "patient_not_found") {
       return Response.json({ message: "Patient not found" }, { status: 404 });
@@ -55,6 +56,15 @@ export async function onRequestPost(context: { request: Request; env: Env; param
           }
         },
         { status: 400 }
+      );
+    }
+    if (result.status === "duplicate") {
+      return Response.json(
+        {
+          message: "Duplicate prescription detected",
+          warnings: result.warnings
+        },
+        { status: 409 }
       );
     }
 

@@ -75,16 +75,42 @@ That means there is no manual schema migration step after deployment.
 
 ## Local Development
 
-Install dependencies:
+Run everything with the one-step local testing script:
+
+```bash
+.\run_local_for_testing.cmd
+```
+
+The script will:
+
+- verify that Node.js is installed
+- install dependencies if `node_modules` is missing
+- stop any process already using `127.0.0.1:3000`
+- build the static app
+- seed the local D1 database with test data
+- start the app locally at `http://127.0.0.1:3000`
+- run through Cloudflare Pages locally so `/api` routes and D1-backed data work during testing
+
+Seed the local D1 database with testing-only sample data for every table:
+
+```bash
+npm.cmd run seed:local:test
+```
+
+This local seed command:
+
+- recreates the local D1 schema if needed
+- clears existing local D1 data
+- inserts linked sample records into `Patient`, `PatientNote`, `PatientEvent`, `Medication`, and `Prescription`
+- uses `wrangler d1 execute --local`, so it does not modify the remote Cloudflare database
+
+If you want to run the steps manually instead, use:
 
 ```bash
 npm install
-```
-
-Run the app locally:
-
-```bash
-npm run dev
+npm.cmd run build
+npm.cmd run seed:local:test
+.\node_modules\.bin\wrangler.cmd pages dev out --ip 127.0.0.1 --port 3000 --persist-to .wrangler\state
 ```
 
 Build the static site:

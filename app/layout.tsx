@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { Inter } from "next/font/google";
+import { WorkflowSidebar } from "@/app/components/workflow-sidebar";
 import "./globals.css";
 
 const bodyFont = Inter({
@@ -19,18 +19,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en">
       <body className={`${bodyFont.variable}`}>
         <div className="app-shell">
-          <aside className="app-sidebar" aria-label="Primary">
-            <div className="sidebar-brand">
-              <span>Rx Pad</span>
-              <small>Clinical Workspace</small>
-            </div>
-            <nav className="sidebar-nav">
-              <Link href="/">Dashboard</Link>
-              <Link href="/patients/new">Add Patient</Link>
-              <Link href="/patients">Search Patients</Link>
-              <Link href="/prescription-dataset">Prescription Dataset</Link>
-            </nav>
-          </aside>
+          <WorkflowSidebar />
           <main className="app-main">
             <div className="page-content">{children}</div>
           </main>

@@ -14,5 +14,6 @@ prisma/dev.db
 prisma/dev.db-journal
 prisma/dev.db-wal
 prisma/dev.db-shm
+.wrangler/
 .DS_Store
 Thumbs.db

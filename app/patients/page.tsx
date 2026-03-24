@@ -151,7 +151,6 @@ function PatientsSearchContent() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<PatientDetail | null>(null);
   const [listLoading, setListLoading] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [prescriptions, setPrescriptions] = useState<PrescriptionRecord[]>([]);
@@ -302,7 +301,6 @@ function PatientsSearchContent() {
 
     const controller = new AbortController();
     async function loadDetail() {
-      setDetailLoading(true);
       setError(null);
       try {
         const response = await fetch(`/api/patients/${selectedId}`, { signal: controller.signal });
@@ -315,8 +313,6 @@ function PatientsSearchContent() {
       } catch (fetchError: unknown) {
         if (fetchError instanceof DOMException && fetchError.name === "AbortError") return;
         setError("Could not load patient details.");
-      } finally {
-        setDetailLoading(false);
       }
     }
 
@@ -345,6 +341,26 @@ function PatientsSearchContent() {
       setEditForm(toPatientEditForm(selectedPatient));
     }
   }, [selectedPatient]);
+
+  useEffect(() => {
+    if (!editSuccess) return;
+
+    const timeout = window.setTimeout(() => {
+      setEditSuccess(null);
+    }, 2500);
+
+    return () => window.clearTimeout(timeout);
+  }, [editSuccess]);
+
+  useEffect(() => {
+    if (!prescriptionSuccess) return;
+
+    const timeout = window.setTimeout(() => {
+      setPrescriptionSuccess(null);
+    }, 2500);
+
+    return () => window.clearTimeout(timeout);
+  }, [prescriptionSuccess]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -434,6 +450,7 @@ function PatientsSearchContent() {
       }));
       return;
     }
+    const medicationId = selectedMedication.id;
 
     setPrescriptionSaving(true);
     setPrescriptionError(null);
@@ -441,17 +458,48 @@ function PatientsSearchContent() {
     setPrescriptionFieldErrors({});
 
     try {
-      const response = await fetch(`/api/patients/${selectedId}/prescriptions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          medicationId: selectedMedication.id,
-          ...prescriptionForm
-        })
-      });
+      async function savePrescription(allowDuplicate: boolean) {
+        return fetch(`/api/patients/${selectedId}/prescriptions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            medicationId,
+            ...prescriptionForm,
+            allowDuplicate
+          })
+        });
+      }
+
+      let response = await savePrescription(false);
 
       const payload = (await response.json()) as ApiResponse<PrescriptionRecord>;
       if (!response.ok) {
+        if (response.status === 409 && Array.isArray(payload?.warnings) && payload.warnings.length > 0) {
+          const confirmed = window.confirm(`${payload.warnings.join("\n")}\n\nAdd this duplicate prescription anyway?`);
+          if (confirmed) {
+            response = await savePrescription(true);
+            const confirmedPayload = (await response.json()) as ApiResponse<PrescriptionRecord>;
+            if (!response.ok) {
+              if (confirmedPayload?.fieldErrors && typeof confirmedPayload.fieldErrors === "object") {
+                setPrescriptionFieldErrors(confirmedPayload.fieldErrors as Record<string, string>);
+              }
+              setPrescriptionError(confirmedPayload?.message ?? "Could not save prescription.");
+              return;
+            }
+
+            setPrescriptionForm(initialPrescriptionForm);
+            setSelectedMedication(null);
+            setMedicationQuery("");
+            setPrescriptionSuccess("Prescription added successfully.");
+            setShowAddPrescriptionForm(false);
+            await loadPrescriptions(selectedId);
+            await loadPatientEvents(selectedId);
+            return;
+          }
+
+          setPrescriptionError(payload?.warnings?.[0] ?? "Duplicate prescription was not added.");
+          return;
+        }
         if (payload?.fieldErrors && typeof payload.fieldErrors === "object") {
           setPrescriptionFieldErrors(payload.fieldErrors as Record<string, string>);
         }
@@ -463,7 +511,9 @@ function PatientsSearchContent() {
       setSelectedMedication(null);
       setMedicationQuery("");
       setPrescriptionSuccess("Prescription added successfully.");
+      setShowAddPrescriptionForm(false);
       await loadPrescriptions(selectedId);
+      await loadPatientEvents(selectedId);
     } catch {
       setPrescriptionError("Network error while saving prescription.");
     } finally {
@@ -578,7 +628,7 @@ function PatientsSearchContent() {
       setSelectedPatient(payload as PatientDetail);
       setEditWarnings(warnings);
       setEditSuccess("Patient updated successfully.");
-      setShowEditForm(true);
+      setShowEditForm(false);
       await loadPatients(query);
       await loadPatientEvents(selectedId);
     } catch {
@@ -740,30 +790,15 @@ function PatientsSearchContent() {
           </div>
         ) : null}
 
-        <aside className="panel" aria-live="polite">
-          <div className="panel-header">
-            <h2 className="section-title">Patient Overview</h2>
-            <span className="section-chip">{selectedPatient ? "In focus" : "No selection"}</span>
-          </div>
+        {selectedPatient ? (
+          <aside className="panel" aria-live="polite">
+            {editSuccess ? <div className="floating-confirmation">{editSuccess}</div> : null}
+            {prescriptionSuccess ? <div className="floating-confirmation">{prescriptionSuccess}</div> : null}
+            <div className="panel-header">
+              <h2 className="section-title">Patient Overview</h2>
+              <span className="section-chip">In focus</span>
+            </div>
 
-          {!selectedPatient ? (
-            <>
-              <label>
-                <span>Search by name, date of birth (YYYY-MM-DD), or phone</span>
-                <input
-                  type="search"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Ex: Jane, 1986-05-19, 5551234"
-                />
-              </label>
-              {error ? <div className="msg error">{error}</div> : null}
-              {detailLoading ? <p className="hint">Loading details...</p> : null}
-              <p className="hint">Search and select a patient to open the focused prescription view.</p>
-            </>
-          ) : null}
-
-          {selectedPatient ? (
             <>
               <div className="actions">
                 <button
@@ -816,7 +851,6 @@ function PatientsSearchContent() {
                     </div>
                   ) : null}
                   {editError ? <div className="msg error">{editError}</div> : null}
-                  {editSuccess ? <div className="msg success">{editSuccess}</div> : null}
 
                   <form className="patient-edit-form" onSubmit={submitPatientEdit} noValidate>
                     <div className="field-grid">
@@ -982,74 +1016,85 @@ function PatientsSearchContent() {
               </div>
 
               <section className="rx-block">
-                <div className="panel-header">
-                  <h3 className="section-title">Patient Timeline</h3>
-                  <span className="section-chip">{eventsLoading ? "Loading..." : `${timelineEvents.length} events`}</span>
-                </div>
-                {timelineError ? <div className="msg warning">{timelineError}</div> : null}
-                {eventsLoading ? <p className="hint">Loading timeline...</p> : null}
-                {!eventsLoading && timelineEvents.length === 0 ? <p className="hint">No timeline events available.</p> : null}
-                <ul className="timeline-list">
-                  {timelineEvents.map((event) => (
-                    <li key={event.id} className="timeline-item">
-                      <div className="timeline-top">
-                        <strong>{event.title}</strong>
-                        <span>{formatDateTime(event.createdAt)}</span>
-                      </div>
-                      <p>{event.details ?? event.type.replace(/_/g, " ").toLowerCase()}</p>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-
-              <section className="rx-summary-grid">
-                <div className="rx-summary-card">
+                <div className="rx-history">
                   <div className="panel-header">
-                    <h3 className="section-title">Previous Notes</h3>
-                    <button type="button" className="btn btn-soft btn-xs" onClick={() => setShowNoteForm(true)}>
-                      Add Note
-                    </button>
+                    <h3 className="section-title">Active Prescriptions</h3>
+                    <span className="section-chip">{activePrescriptions.length}</span>
                   </div>
+                  {prescriptionsLoading ? <p className="hint">Loading prescriptions...</p> : null}
+                  {!prescriptionsLoading && activePrescriptions.length === 0 ? <p className="hint">No active prescriptions.</p> : null}
 
-                  {showNoteForm ? (
-                    <form onSubmit={submitPatientNote} className="note-compose-form">
-                      <textarea
-                        value={noteText}
-                        onChange={(e) => setNoteText(e.target.value)}
-                        placeholder="Add visit note..."
-                      />
-                      <div className="rx-inline-actions">
-                        <button type="submit" className="btn btn-soft btn-xs" disabled={noteSaving}>
-                          {noteSaving ? "Saving..." : "Save Note"}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-soft btn-xs"
-                          onClick={() => {
-                            setShowNoteForm(false);
-                            setNoteText("");
-                            setNoteError(null);
-                            setNoteSuccess(null);
-                          }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </form>
-                  ) : null}
-
-                  {noteError ? <div className="msg error">{noteError}</div> : null}
-                  {noteSuccess ? <div className="msg success">{noteSuccess}</div> : null}
-                  {noteLoading ? <p className="hint">Loading notes...</p> : null}
-                  {!noteLoading && patientNotes.length === 0 ? <p className="hint">No notes available.</p> : null}
-                  <ul className="rx-mini-list">
-                    {patientNotes.map((note) => (
-                      <li key={note.id}>
-                        <strong>{formatDate(note.createdAt)}:</strong>
-                        <span>{note.note}</span>
+                  <ul className="rx-list">
+                    {activePrescriptions.map((prescription) => (
+                      <li key={prescription.id} className="rx-card">
+                        <p className="rx-title">{prescription.medicationName}</p>
+                        <p className="rx-meta">
+                          Strength: {prescription.strength} | Dose: {prescription.dose}
+                        </p>
+                        <p className="rx-meta">
+                          Frequency: {prescription.frequency} | Duration: {prescription.duration}
+                        </p>
+                        <p className="rx-meta">Added: {formatDate(prescription.createdAt)}</p>
+                        {prescription.instructions ? <p className="rx-note">Instructions: {prescription.instructions}</p> : null}
+                        <div className="rx-row-actions">
+                          <button
+                            type="button"
+                            className="btn btn-soft btn-xs"
+                            onClick={() => togglePrescriptionStatus(prescription.id, false)}
+                            disabled={statusUpdatingId === prescription.id}
+                          >
+                            {statusUpdatingId === prescription.id ? "Updating..." : "Inactivate"}
+                          </button>
+                        </div>
                       </li>
                     ))}
                   </ul>
+
+                  <div className="panel-header">
+                    <h3 className="section-title">Inactive Prescriptions</h3>
+                    <button
+                      type="button"
+                      className="btn btn-soft btn-xs"
+                      onClick={() => setShowInactivePrescriptions((prev) => !prev)}
+                    >
+                      {showInactivePrescriptions ? "Hide" : "Show"} ({inactivePrescriptions.length})
+                    </button>
+                  </div>
+
+                  {showInactivePrescriptions ? (
+                    <>
+                      {!prescriptionsLoading && inactivePrescriptions.length === 0 ? (
+                        <p className="hint">No inactive prescriptions.</p>
+                      ) : null}
+                      <ul className="rx-list">
+                        {inactivePrescriptions.map((prescription) => (
+                          <li key={prescription.id} className="rx-card rx-card-inactive">
+                            <p className="rx-title">{prescription.medicationName}</p>
+                            <p className="rx-meta">
+                              Strength: {prescription.strength} | Dose: {prescription.dose}
+                            </p>
+                            <p className="rx-meta">
+                              Frequency: {prescription.frequency} | Duration: {prescription.duration}
+                            </p>
+                            <p className="rx-meta">
+                              Inactivated: {prescription.inactivatedAt ? formatDate(prescription.inactivatedAt) : "Unknown"}
+                            </p>
+                            {prescription.instructions ? <p className="rx-note">Instructions: {prescription.instructions}</p> : null}
+                            <div className="rx-row-actions">
+                              <button
+                                type="button"
+                                className="btn btn-soft btn-xs"
+                                onClick={() => togglePrescriptionStatus(prescription.id, true)}
+                                disabled={statusUpdatingId === prescription.id}
+                              >
+                                {statusUpdatingId === prescription.id ? "Updating..." : "Activate"}
+                              </button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  ) : null}
                 </div>
               </section>
 
@@ -1160,95 +1205,93 @@ function PatientsSearchContent() {
                   </form>
 
                   {prescriptionError ? <div className="msg error">{prescriptionError}</div> : null}
-                  {prescriptionSuccess ? <div className="msg success">{prescriptionSuccess}</div> : null}
                 </section>
               ) : null}
 
-              <section className="rx-block">
-                <div className="rx-history">
+              <section className="rx-summary-grid">
+                <div className="rx-summary-card">
                   <div className="panel-header">
-                    <h3 className="section-title">Active Prescriptions</h3>
-                    <span className="section-chip">{activePrescriptions.length}</span>
-                  </div>
-                  {prescriptionsLoading ? <p className="hint">Loading prescriptions...</p> : null}
-                  {!prescriptionsLoading && activePrescriptions.length === 0 ? <p className="hint">No active prescriptions.</p> : null}
-
-                  <ul className="rx-list">
-                    {activePrescriptions.map((prescription) => (
-                      <li key={prescription.id} className="rx-card">
-                        <p className="rx-title">{prescription.medicationName}</p>
-                        <p className="rx-meta">
-                          Strength: {prescription.strength} | Dose: {prescription.dose}
-                        </p>
-                        <p className="rx-meta">
-                          Frequency: {prescription.frequency} | Duration: {prescription.duration}
-                        </p>
-                        <p className="rx-meta">Added: {formatDate(prescription.createdAt)}</p>
-                        {prescription.instructions ? <p className="rx-note">Instructions: {prescription.instructions}</p> : null}
-                        <div className="rx-row-actions">
-                          <button
-                            type="button"
-                            className="btn btn-soft btn-xs"
-                            onClick={() => togglePrescriptionStatus(prescription.id, false)}
-                            disabled={statusUpdatingId === prescription.id}
-                          >
-                            {statusUpdatingId === prescription.id ? "Updating..." : "Inactivate"}
-                          </button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-
-                  <div className="panel-header">
-                    <h3 className="section-title">Inactive Prescriptions</h3>
-                    <button
-                      type="button"
-                      className="btn btn-soft btn-xs"
-                      onClick={() => setShowInactivePrescriptions((prev) => !prev)}
-                    >
-                      {showInactivePrescriptions ? "Hide" : "Show"} ({inactivePrescriptions.length})
+                    <h3 className="section-title">Previous Notes</h3>
+                    <button type="button" className="btn btn-soft btn-xs" onClick={() => setShowNoteForm(true)}>
+                      Add Note
                     </button>
                   </div>
 
-                  {showInactivePrescriptions ? (
-                    <>
-                      {!prescriptionsLoading && inactivePrescriptions.length === 0 ? (
-                        <p className="hint">No inactive prescriptions.</p>
-                      ) : null}
-                      <ul className="rx-list">
-                        {inactivePrescriptions.map((prescription) => (
-                          <li key={prescription.id} className="rx-card rx-card-inactive">
-                            <p className="rx-title">{prescription.medicationName}</p>
-                            <p className="rx-meta">
-                              Strength: {prescription.strength} | Dose: {prescription.dose}
-                            </p>
-                            <p className="rx-meta">
-                              Frequency: {prescription.frequency} | Duration: {prescription.duration}
-                            </p>
-                            <p className="rx-meta">
-                              Inactivated: {prescription.inactivatedAt ? formatDate(prescription.inactivatedAt) : "Unknown"}
-                            </p>
-                            {prescription.instructions ? <p className="rx-note">Instructions: {prescription.instructions}</p> : null}
-                            <div className="rx-row-actions">
-                              <button
-                                type="button"
-                                className="btn btn-soft btn-xs"
-                                onClick={() => togglePrescriptionStatus(prescription.id, true)}
-                                disabled={statusUpdatingId === prescription.id}
-                              >
-                                {statusUpdatingId === prescription.id ? "Updating..." : "Activate"}
-                              </button>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </>
+                  {showNoteForm ? (
+                    <form onSubmit={submitPatientNote} className="note-compose-form">
+                      <textarea
+                        value={noteText}
+                        onChange={(e) => setNoteText(e.target.value)}
+                        placeholder="Add visit note..."
+                      />
+                      <div className="rx-inline-actions">
+                        <button type="submit" className="btn btn-soft btn-xs" disabled={noteSaving}>
+                          {noteSaving ? "Saving..." : "Save Note"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-soft btn-xs"
+                          onClick={() => {
+                            setShowNoteForm(false);
+                            setNoteText("");
+                            setNoteError(null);
+                            setNoteSuccess(null);
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
                   ) : null}
+
+                  {noteError ? <div className="msg error">{noteError}</div> : null}
+                  {noteSuccess ? <div className="msg success">{noteSuccess}</div> : null}
+                  {noteLoading ? <p className="hint">Loading notes...</p> : null}
+                  {!noteLoading && patientNotes.length === 0 ? <p className="hint">No notes available.</p> : null}
+                  <ul className="note-entry-list">
+                    {patientNotes.map((note) => (
+                      <li key={note.id} className="note-entry">
+                        <div className="note-entry-date">{formatDateTime(note.createdAt)}</div>
+                        <p>{note.note}</p>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               </section>
+
+              <section className="rx-block">
+                <details className="timeline-disclosure">
+                  <summary className="timeline-summary">
+                    <div>
+                      <h3 className="section-title">Patient Timeline</h3>
+                      <p className="hint">Open to review dated actions and changes.</p>
+                    </div>
+                    <div className="timeline-summary-meta">
+                      <span className="section-chip">{eventsLoading ? "Loading..." : `${timelineEvents.length} events`}</span>
+                      <span className="timeline-chevron" aria-hidden="true">
+                        ▼
+                      </span>
+                    </div>
+                  </summary>
+                  {timelineError ? <div className="msg warning">{timelineError}</div> : null}
+                  {eventsLoading ? <p className="hint">Loading timeline...</p> : null}
+                  {!eventsLoading && timelineEvents.length === 0 ? <p className="hint">No timeline events available.</p> : null}
+                  <ul className="timeline-list">
+                    {timelineEvents.map((event) => (
+                      <li key={event.id} className="timeline-item">
+                        <div className="timeline-top">
+                          <span>{formatDateTime(event.createdAt)}</span>
+                          <strong>{event.title}</strong>
+                        </div>
+                        <p>{event.details ?? event.type.replace(/_/g, " ").toLowerCase()}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              </section>
             </>
-          ) : null}
-        </aside>
+          </aside>
+        ) : null}
       </section>
     </section>
   );

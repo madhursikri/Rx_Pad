@@ -9,7 +9,8 @@
     "build": "next build",
     "lint": "next lint",
     "typecheck": "next build && tsc --noEmit",
-    "pages:dev": "npm run build && wrangler pages dev out"
+    "pages:dev": "npm run build && wrangler pages dev out",
+    "seed:local:test": "node scripts/seed-local-test-db.mjs"
   },
   "dependencies": {
     "next": "^15.1.7",

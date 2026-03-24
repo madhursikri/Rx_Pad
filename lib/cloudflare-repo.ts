@@ -588,11 +588,52 @@ export async function getPatientPrescriptions(db: D1Runner, id: string): Promise
   return rows.results.map(toPrescriptionRecord);
 }
 
-export async function createPrescription(db: D1Runner, id: string, input: CreatePrescriptionInput) {
+export async function createPrescription(
+  db: D1Runner,
+  id: string,
+  input: CreatePrescriptionInput,
+  options?: { allowDuplicate?: boolean }
+) {
   await ensureDatabaseReady(db);
   const [patient, medication] = await Promise.all([getPatientRow(db, id), getMedicationRow(db, input.medicationId)]);
   if (!patient) return { status: "patient_not_found" as const };
   if (!medication) return { status: "medication_not_found" as const };
+
+  if (!options?.allowDuplicate) {
+    const duplicate = await db
+      .prepare(
+        `SELECT id
+         FROM Prescription
+         WHERE patientId = ?
+           AND medicationId = ?
+           AND strength = ?
+           AND dose = ?
+           AND frequency = ?
+           AND duration = ?
+           AND COALESCE(instructions, '') = COALESCE(?, '')
+           AND isActive = 1
+         LIMIT 1`
+      )
+      .bind(
+        id,
+        medication.id,
+        input.strength,
+        input.dose,
+        input.frequency,
+        input.duration,
+        input.instructions
+      )
+      .first<{ id: string }>();
+
+    if (duplicate) {
+      return {
+        status: "duplicate" as const,
+        warnings: [
+          `This patient already has an active prescription for ${medication.name} ${input.strength} with the same dose, frequency, and duration.`
+        ]
+      };
+    }
+  }
 
   const now = new Date().toISOString();
   const prescriptionId = crypto.randomUUID();
