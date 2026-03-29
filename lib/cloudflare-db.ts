@@ -10,7 +10,7 @@ import {
 type D1Runner = D1Database;
 type BootstrapMode = "production" | "preview";
 
-const bootstrapPromises = new WeakMap<D1Runner, Promise<void>>();
+const bootstrapPromises = new WeakMap<D1Runner, Map<BootstrapMode, Promise<void>>>();
 
 async function runStatements(db: D1Runner, statements: string[]) {
   if (db.batch) {
@@ -232,13 +232,19 @@ async function initializeDatabase(db: D1Runner, mode: BootstrapMode) {
 }
 
 export async function ensureDatabaseReady(db: D1Runner, mode: BootstrapMode = "production") {
-  let bootstrapPromise = bootstrapPromises.get(db);
+  let modeMap = bootstrapPromises.get(db);
+  if (!modeMap) {
+    modeMap = new Map();
+    bootstrapPromises.set(db, modeMap);
+  }
+
+  let bootstrapPromise = modeMap.get(mode);
   if (!bootstrapPromise) {
     bootstrapPromise = initializeDatabase(db, mode).catch((error) => {
-      bootstrapPromises.delete(db);
+      modeMap?.delete(mode);
       throw error;
     });
-    bootstrapPromises.set(db, bootstrapPromise);
+    modeMap.set(mode, bootstrapPromise);
   }
 
   await bootstrapPromise;

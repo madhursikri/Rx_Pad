@@ -139,6 +139,23 @@ npm run pages:dev
 
 The repository includes a minimal [wrangler.toml](/c:/Users/madhu/git/Rx_Pad/wrangler.toml) for local Cloudflare development.
 
+## Testing
+
+Run the full test suite with:
+
+```bash
+npm.cmd run test:ci
+```
+
+You can also run each layer separately:
+
+- `npm.cmd run test:unit` for unit and component tests
+- `npm.cmd run test:integration` for repository and API handler tests
+- `npm.cmd run test:coverage` for the full Vitest coverage pass
+- `npm.cmd run test:e2e` for browser smoke tests
+
+The tests use shared fixtures and a SQL.js-backed D1 harness so they stay fast, deterministic, and easy to update when the app changes.
+
 ## Notes
 
 - This repo is Cloudflare Pages focused.
