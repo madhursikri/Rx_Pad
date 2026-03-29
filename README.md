@@ -8,11 +8,11 @@ Rx Pad is a browser-based patient intake and prescription workflow app that can 
 - Deploying automatically from GitHub on every push
 - Running the API endpoints through Pages Functions
 - Providing the D1 database backing store
-- Creating the database tables and starter records automatically on first app use
+- Creating the database tables automatically on first app use
 
 ## One-Time Cloudflare Setup
 
-You still need to create the Cloudflare project and attach the D1 database once.
+You still need to create the Cloudflare project and attach the production and preview D1 databases once.
 After that, Cloudflare handles the rest.
 
 ## Step By Step Deployment
@@ -24,16 +24,18 @@ After that, Cloudflare handles the rest.
 5. Choose **Pages**.
 6. Select **Connect to Git**.
 7. Pick your GitHub account and this repository.
-8. Set the branch to deploy, usually `main`.
+8. Set the branch to deploy, usually `cloudfare_app`.
 9. Use these build settings:
    - Build command: `npm run build`
    - Build output directory: `out`
-10. Create a new **D1** database in Cloudflare.
-11. Copy the database ID from the D1 database details page.
-12. Paste that ID into [wrangler.toml](/c:/Users/madhu/git/Rx_Pad/wrangler.toml) in the `database_id` field.
-13. Save the file and push the change to GitHub.
-14. Save and deploy the Pages project.
-15. Open the Cloudflare Pages URL that gets created.
+10. Create a **production** D1 database in Cloudflare.
+11. Create a separate **preview/testing** D1 database in Cloudflare.
+12. Copy the production database ID into the top-level `[[d1_databases]]` section in [wrangler.toml](/c:/Users/madhu/git/Rx_Pad/wrangler.toml).
+13. Copy the preview database ID into `[env.preview.d1_databases]` in the same file.
+14. Copy the production database ID again into `[env.production.d1_databases]` in the same file.
+15. Save the file and push the change to GitHub.
+16. Save and deploy the Pages project.
+17. Open the Cloudflare Pages URL that gets created.
 
 ## Cloudflare Pages
 
@@ -42,16 +44,19 @@ When you create the Pages project, use these values:
 - Project type: `Pages`
 - Source: `GitHub`
 - Repository: this `Rx_Pad` repo
-- Branch: `main` or your production branch
+- Branch: `cloudfare_app`
 - Build command: `npm run build`
 - Build output directory: `out`
 - D1 binding name: `DB`
-- D1 database ID: set in [wrangler.toml](/c:/Users/madhu/git/Rx_Pad/wrangler.toml)
+- Production D1 database ID: set in the top-level `[[d1_databases]]` section and `[env.production.d1_databases]` in [wrangler.toml](/c:/Users/madhu/git/Rx_Pad/wrangler.toml)
+- Preview D1 database ID: set in `[env.preview.d1_databases]` in [wrangler.toml](/c:/Users/madhu/git/Rx_Pad/wrangler.toml)
+- Bootstrap mode: `RX_PAD_BOOTSTRAP_MODE=production` for production and `RX_PAD_BOOTSTRAP_MODE=preview` for preview
 
 Recommended project behavior:
 
 - Enable automatic deployments from GitHub.
-- Leave the app public so users can open the Pages URL directly.
+- Route the `cloudfare_app` branch to the production D1 database.
+- Route the `cloudfare_app_wip` branch to the preview D1 database.
 - Do not add a separate API server; the app already serves its own API routes through Pages Functions.
 - If the dashboard says bindings are managed through `wrangler.toml`, that is expected. Use the repo file instead of the UI.
 
@@ -59,13 +64,20 @@ If Cloudflare asks for an environment variable or optional setting you do not un
 
 ## What Happens On First Launch
 
-The first time the app receives a request, it will:
+When the app receives a request on the `cloudfare_app` branch, it will:
 
 - create the database tables in D1
-- seed the default medication list
-- seed the starter patient records
+- leave the database empty except for schema
 
-That means there is no manual schema migration step after deployment.
+When the app receives a request on the `cloudfare_app_wip` branch, it will:
+
+- create the database tables in D1
+- seed the preview sample data once
+- keep the preview database stable on later deployments
+
+That preview seeding is controlled by the Pages bootstrap mode, which should resolve to `preview` on `cloudfare_app_wip` and `production` on `cloudfare_app`.
+
+That means there is no manual schema migration step after deployment, and production is never auto-populated with test records.
 
 ## Ongoing Workflow
 

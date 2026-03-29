@@ -1,22 +1,16 @@
-import { MEDICATIONS, TEST_PATIENTS } from "@/lib/bootstrap-data";
-import { normalizeCountryCode, normalizePhone } from "@/lib/patient-utils";
+import {
+  PREVIEW_BOOTSTRAP_KEY,
+  PREVIEW_EVENTS,
+  PREVIEW_MEDICATIONS,
+  PREVIEW_NOTES,
+  PREVIEW_PATIENTS,
+  PREVIEW_PRESCRIPTIONS
+} from "@/lib/preview-seed-data";
 
 type D1Runner = D1Database;
+type BootstrapMode = "production" | "preview";
 
-let bootstrapPromise: Promise<void> | null = null;
-
-function toUtcIso(dateString: string): string {
-  return new Date(`${dateString}T00:00:00.000Z`).toISOString();
-}
-
-function toDigits(value: string): string {
-  return value.replace(/\D/g, "");
-}
-
-function buildE164Digits(countryCode: string | null, phone: string | null): string | null {
-  if (!countryCode || !phone) return null;
-  return `${toDigits(countryCode)}${toDigits(phone)}`;
-}
+const bootstrapPromises = new WeakMap<D1Runner, Promise<void>>();
 
 async function runStatements(db: D1Runner, statements: string[]) {
   if (db.batch) {
@@ -106,106 +100,145 @@ async function createSchema(db: D1Runner) {
     )`,
     `CREATE INDEX IF NOT EXISTS idx_prescription_patient_created ON Prescription(patientId, createdAt)`,
     `CREATE INDEX IF NOT EXISTS idx_prescription_patient_active ON Prescription(patientId, isActive)`,
-    `CREATE INDEX IF NOT EXISTS idx_prescription_medication ON Prescription(medicationId)`
+    `CREATE INDEX IF NOT EXISTS idx_prescription_medication ON Prescription(medicationId)`,
+    `CREATE TABLE IF NOT EXISTS BootstrapState (
+      name TEXT PRIMARY KEY,
+      mode TEXT NOT NULL,
+      branch TEXT,
+      appliedAt TEXT NOT NULL
+    )`
   ]);
 }
 
-async function seedMedications(db: D1Runner) {
-  for (const medication of MEDICATIONS) {
-    await db
-      .prepare(
-        `INSERT INTO Medication (
-          id, name, commonStrengths, defaultDose, defaultFrequency, defaultDuration, defaultInstructions, createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        ON CONFLICT(name) DO UPDATE SET
-          commonStrengths = excluded.commonStrengths,
-          defaultDose = excluded.defaultDose,
-          defaultFrequency = excluded.defaultFrequency,
-          defaultDuration = excluded.defaultDuration,
-          defaultInstructions = excluded.defaultInstructions,
-          updatedAt = CURRENT_TIMESTAMP`
-      )
-      .bind(
-        crypto.randomUUID(),
-        medication.name,
-        medication.commonStrengths,
-        medication.defaultDose,
-        medication.defaultFrequency,
-        medication.defaultDuration,
-        medication.defaultInstructions
-      )
-      .run();
+async function insertRows<T>(db: D1Runner, statement: string, rows: readonly T[], bindRow: (row: T) => unknown[]) {
+  for (const row of rows) {
+    await db.prepare(statement).bind(...bindRow(row)).run();
   }
 }
 
-async function seedPatients(db: D1Runner) {
-  for (const patient of TEST_PATIENTS) {
-    const dob = toUtcIso(patient.dob);
-    const phone = patient.phone ? normalizePhone(patient.phone) : null;
-    const phoneCountryCode = patient.phoneCountryCode ? normalizeCountryCode(patient.phoneCountryCode) : null;
-    const phoneE164 = buildE164Digits(phoneCountryCode, phone);
-    const addressLine2 = "addressLine2" in patient ? patient.addressLine2 ?? null : null;
+async function seedPreviewData(db: D1Runner) {
+  const existing = await db
+    .prepare("SELECT name FROM BootstrapState WHERE name = ?")
+    .bind(PREVIEW_BOOTSTRAP_KEY)
+    .first<{ name: string }>();
 
-    const existing = await db
-      .prepare(
-        `SELECT id FROM Patient
-         WHERE firstName = ? AND lastName = ? AND dob = ?
-         LIMIT 1`
-      )
-      .bind(patient.firstName, patient.lastName, dob)
-      .first<{ id: string }>();
-
-    if (existing) continue;
-
-    await db
-      .prepare(
-        `INSERT INTO Patient (
-          id, firstName, lastName, dob, gender, phoneCountryCode, phone, phoneE164,
-          email, addressLine1, addressLine2, city, state, postalCode, notes, createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
-      )
-      .bind(
-        crypto.randomUUID(),
-        patient.firstName,
-        patient.lastName,
-        dob,
-        patient.gender,
-        phoneCountryCode,
-        phone,
-        phoneE164,
-        patient.email ?? null,
-        patient.addressLine1 ?? null,
-        addressLine2,
-        patient.city ?? null,
-        patient.state ?? null,
-        patient.postalCode ?? null,
-        patient.notes ?? null
-      )
-      .run();
+  if (existing) {
+    return;
   }
+
+  await insertRows(
+    db,
+    `INSERT OR IGNORE INTO Medication (
+      id, name, commonStrengths, defaultDose, defaultFrequency, defaultDuration, defaultInstructions, createdAt, updatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    PREVIEW_MEDICATIONS,
+    (medication) => [
+      medication.id,
+      medication.name,
+      medication.commonStrengths,
+      medication.defaultDose,
+      medication.defaultFrequency,
+      medication.defaultDuration,
+      medication.defaultInstructions,
+      medication.createdAt,
+      medication.updatedAt
+    ]
+  );
+
+  await insertRows(
+    db,
+    `INSERT OR IGNORE INTO Patient (
+      id, firstName, lastName, dob, gender, phoneCountryCode, phone, phoneE164,
+      email, addressLine1, addressLine2, city, state, postalCode, notes, createdAt, updatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    PREVIEW_PATIENTS,
+    (patient) => [
+      patient.id,
+      patient.firstName,
+      patient.lastName,
+      patient.dob,
+      patient.gender,
+      patient.phoneCountryCode,
+      patient.phone,
+      patient.phoneE164,
+      patient.email,
+      patient.addressLine1,
+      patient.addressLine2,
+      patient.city,
+      patient.state,
+      patient.postalCode,
+      patient.notes,
+      patient.createdAt,
+      patient.updatedAt
+    ]
+  );
+
+  await insertRows(
+    db,
+    `INSERT OR IGNORE INTO Prescription (
+      id, patientId, medicationId, medicationName, strength, dose, frequency, duration, instructions, isActive, inactivatedAt, createdAt, updatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    PREVIEW_PRESCRIPTIONS,
+    (prescription) => [
+      prescription.id,
+      prescription.patientId,
+      prescription.medicationId,
+      prescription.medicationName,
+      prescription.strength,
+      prescription.dose,
+      prescription.frequency,
+      prescription.duration,
+      prescription.instructions,
+      prescription.isActive,
+      prescription.inactivatedAt,
+      prescription.createdAt,
+      prescription.updatedAt
+    ]
+  );
+
+  await insertRows(
+    db,
+    `INSERT OR IGNORE INTO PatientNote (
+      id, patientId, note, createdAt, updatedAt
+    ) VALUES (?, ?, ?, ?, ?)`,
+    PREVIEW_NOTES,
+    (note) => [note.id, note.patientId, note.note, note.createdAt, note.updatedAt]
+  );
+
+  await insertRows(
+    db,
+    `INSERT OR IGNORE INTO PatientEvent (
+      id, patientId, type, title, details, createdAt
+    ) VALUES (?, ?, ?, ?, ?, ?)`,
+    PREVIEW_EVENTS,
+    (event) => [event.id, event.patientId, event.type, event.title, event.details, event.createdAt]
+  );
+
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO BootstrapState (name, mode, branch, appliedAt)
+       VALUES (?, ?, ?, ?)`
+    )
+    .bind(PREVIEW_BOOTSTRAP_KEY, "preview", null, new Date().toISOString())
+    .run();
 }
 
-async function initializeDatabase(db: D1Runner) {
+async function initializeDatabase(db: D1Runner, mode: BootstrapMode) {
   await createSchema(db);
 
-  const medicationCount = await db.prepare("SELECT COUNT(*) as count FROM Medication").first<{ count: number }>();
-  const patientCount = await db.prepare("SELECT COUNT(*) as count FROM Patient").first<{ count: number }>();
-
-  if ((medicationCount?.count ?? 0) === 0) {
-    await seedMedications(db);
-  }
-
-  if ((patientCount?.count ?? 0) === 0) {
-    await seedPatients(db);
+  if (mode === "preview") {
+    await seedPreviewData(db);
   }
 }
 
-export async function ensureDatabaseReady(db: D1Runner) {
+export async function ensureDatabaseReady(db: D1Runner, mode: BootstrapMode = "production") {
+  let bootstrapPromise = bootstrapPromises.get(db);
   if (!bootstrapPromise) {
-    bootstrapPromise = initializeDatabase(db).catch((error) => {
-      bootstrapPromise = null;
+    bootstrapPromise = initializeDatabase(db, mode).catch((error) => {
+      bootstrapPromises.delete(db);
       throw error;
     });
+    bootstrapPromises.set(db, bootstrapPromise);
   }
 
   await bootstrapPromise;
