@@ -96,11 +96,6 @@ export default function NewPatientPage() {
         <p className="hero-kicker">Patient Intake</p>
         <h1 className="section-title">Add New Patient</h1>
         <p className="hint">Capture complete demographics in one place. Fields marked with * are required.</p>
-        <div className="pill-row">
-          <span className="pill">Fast Entry</span>
-          <span className="pill">Country-Aware Phone</span>
-          <span className="pill">Validation Built-In</span>
-        </div>
       </div>
 
       <section className="panel">

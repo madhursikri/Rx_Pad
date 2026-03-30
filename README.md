@@ -2,6 +2,13 @@
 
 Rx Pad is a browser-based patient intake and prescription workflow app that can be deployed on Cloudflare Pages.
 
+## Authentication
+
+Rx Pad intentionally does not include its own login page, passwords, or session store.
+The simplest secure setup is to protect the whole Pages site with **Cloudflare Access** and use **One-time PIN** email login for an approved allowlist of users.
+
+See [docs/authentication.md](/c:/Users/madhu/git/Rx_Pad/docs/authentication.md) for the recommended setup.
+
 ## What Cloudflare Will Handle
 
 - Hosting the web app
@@ -9,11 +16,14 @@ Rx Pad is a browser-based patient intake and prescription workflow app that can 
 - Running the API endpoints through Pages Functions
 - Providing the D1 database backing store
 - Creating the database tables automatically on first app use
+- Protecting the app with Cloudflare Access when configured
 
 ## One-Time Cloudflare Setup
 
 You still need to create the Cloudflare project and attach the production and preview D1 databases once.
 After that, Cloudflare handles the rest.
+
+If you are enabling authentication, also configure Cloudflare Access for the production and preview hostnames before sharing the app with users.
 
 ## Step By Step Deployment
 
@@ -51,6 +61,7 @@ When you create the Pages project, use these values:
 - Production D1 database ID: set in the top-level `[[d1_databases]]` section and `[env.production.d1_databases]` in [wrangler.toml](/c:/Users/madhu/git/Rx_Pad/wrangler.toml)
 - Preview D1 database ID: set in `[env.preview.d1_databases]` in [wrangler.toml](/c:/Users/madhu/git/Rx_Pad/wrangler.toml)
 - Bootstrap mode: `RX_PAD_BOOTSTRAP_MODE=production` for production and `RX_PAD_BOOTSTRAP_MODE=preview` for preview
+- Authentication: protect the Pages site with Cloudflare Access and approved-email One-time PIN if you want sign-in
 
 Recommended project behavior:
 
@@ -58,6 +69,7 @@ Recommended project behavior:
 - Route the `cloudfare_app` branch to the production D1 database.
 - Route the `cloudfare_app_wip` branch to the preview D1 database.
 - Do not add a separate API server; the app already serves its own API routes through Pages Functions.
+- Do not build an in-app login system unless you specifically need custom roles or self-service accounts.
 - If the dashboard says bindings are managed through `wrangler.toml`, that is expected. Use the repo file instead of the UI.
 
 If Cloudflare asks for an environment variable or optional setting you do not understand, leave it blank unless you know the app needs it.

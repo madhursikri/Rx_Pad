@@ -1,6 +1,7 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { WorkflowNavigationProvider } from "@/app/components/workflow-navigation-provider";
 import { WorkflowSidebar } from "@/app/components/workflow-sidebar";
 
 const mockUsePathname = vi.fn();
@@ -15,7 +16,11 @@ describe("workflow sidebar", () => {
   });
 
   it("marks the landing brand active on the home page", () => {
-    render(<WorkflowSidebar />);
+    render(
+      <WorkflowNavigationProvider>
+        <WorkflowSidebar />
+      </WorkflowNavigationProvider>
+    );
 
     expect(screen.getByRole("link", { name: /rx pad clinical workspace/i })).toHaveAttribute("href", "/");
     expect(screen.getByRole("link", { name: /rx pad clinical workspace/i })).toHaveAttribute("aria-current", "page");
@@ -23,7 +28,11 @@ describe("workflow sidebar", () => {
 
   it("highlights only the most specific matching workflow", () => {
     mockUsePathname.mockReturnValue("/patients/abc");
-    render(<WorkflowSidebar />);
+    render(
+      <WorkflowNavigationProvider>
+        <WorkflowSidebar />
+      </WorkflowNavigationProvider>
+    );
 
     const searchPatients = screen.getByRole("link", { name: /search patients/i });
     const addPatient = screen.getByRole("link", { name: /add patient/i });

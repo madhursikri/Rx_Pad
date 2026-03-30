@@ -160,11 +160,6 @@ export default function PrescriptionDatasetPage() {
         <p className="hero-kicker">Prescription Dataset</p>
         <h1 className="section-title">Frequently Used Prescriptions</h1>
         <p className="hint">Manage reusable medication entries and default dosage instructions for faster prescribing.</p>
-        <div className="pill-row">
-          <span className="pill">Reusable Defaults</span>
-          <span className="pill">Medication Search</span>
-          <span className="pill">{visibleCount} Entries</span>
-        </div>
       </div>
 
       <section className="search-layout">

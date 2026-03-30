@@ -1,8 +1,9 @@
 ﻿"use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { COUNTRY_CODES, DEFAULT_COUNTRY_CODE } from "@/lib/country-codes";
+import { useWorkflowNavigation } from "@/app/components/workflow-navigation-provider";
 import type { ApiResponse } from "@/lib/api-response";
 import type {
   MedicationOption,
@@ -141,8 +142,13 @@ function pickDefaultStrength(commonStrengths: string | null): string {
   return first ?? "";
 }
 
+function areFormsEqual<T extends Record<string, unknown>>(left: T, right: T): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 function PatientsSearchContent() {
   const searchParams = useSearchParams();
+  const { registerSearchPatientsAction } = useWorkflowNavigation();
   const createdId = useMemo(() => searchParams.get("created"), [searchParams]);
   const createdWarning = useMemo(() => searchParams.get("warning"), [searchParams]);
 
@@ -186,10 +192,75 @@ function PatientsSearchContent() {
   const [editSuccess, setEditSuccess] = useState<string | null>(null);
   const [editWarnings, setEditWarnings] = useState<string[]>([]);
   const [editFieldErrors, setEditFieldErrors] = useState<Record<string, string>>({});
+  const [searchPromptOpen, setSearchPromptOpen] = useState(false);
+  const [searchPromptError, setSearchPromptError] = useState<string | null>(null);
+  const [searchPromptSaving, setSearchPromptSaving] = useState(false);
 
   const activePrescriptions = useMemo(() => prescriptions.filter((item) => item.isActive), [prescriptions]);
   const inactivePrescriptions = useMemo(() => prescriptions.filter((item) => !item.isActive), [prescriptions]);
   const timelineEvents = useMemo(() => [...patientEvents].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt)), [patientEvents]);
+  const selectedPatientEditForm = useMemo(
+    () => (selectedPatient ? toPatientEditForm(selectedPatient) : initialPatientEditForm),
+    [selectedPatient]
+  );
+  const editFormIsDirty = showEditForm && !areFormsEqual(editForm, selectedPatientEditForm);
+  const prescriptionFormIsDirty =
+    showAddPrescriptionForm &&
+    (selectedMedication !== null ||
+      medicationQuery.trim().length > 0 ||
+      !areFormsEqual(prescriptionForm, initialPrescriptionForm));
+  const noteFormIsDirty = showNoteForm && noteText.trim().length > 0;
+  const hasUnsavedWork = editFormIsDirty || prescriptionFormIsDirty || noteFormIsDirty;
+
+  const resetToSearchWorkflow = useCallback(() => {
+    setSelectedId(null);
+    setSelectedPatient(null);
+    setMedicationQuery("");
+    setSelectedMedication(null);
+    setPrescriptionForm(initialPrescriptionForm);
+    setShowAddPrescriptionForm(false);
+    setShowNoteForm(false);
+    setShowEditForm(false);
+    setPrescriptions([]);
+    setPatientNotes([]);
+    setPatientEvents([]);
+    setEditForm(initialPatientEditForm);
+    setEditError(null);
+    setEditSuccess(null);
+    setEditWarnings([]);
+    setEditFieldErrors({});
+    setPrescriptionError(null);
+    setPrescriptionSuccess(null);
+    setPrescriptionFieldErrors({});
+    setNoteError(null);
+    setNoteSuccess(null);
+    setNoteText("");
+    setTimelineError(null);
+    setSearchPromptOpen(false);
+    setSearchPromptError(null);
+    setSearchPromptSaving(false);
+  }, []);
+
+  const requestSearchWorkflow = useCallback(() => {
+    if (!selectedPatient) {
+      resetToSearchWorkflow();
+      return;
+    }
+
+    if (hasUnsavedWork) {
+      setSearchPromptError(null);
+      setSearchPromptOpen(true);
+      return;
+    }
+
+    resetToSearchWorkflow();
+  }, [hasUnsavedWork, resetToSearchWorkflow, selectedPatient]);
+
+  useEffect(() => {
+    registerSearchPatientsAction(requestSearchWorkflow);
+
+    return () => registerSearchPatientsAction(null);
+  }, [registerSearchPatientsAction, requestSearchWorkflow]);
 
   async function loadPrescriptions(patientId: string) {
     setPrescriptionsLoading(true);
@@ -437,18 +508,17 @@ function PatientsSearchContent() {
     });
   }
 
-  async function submitPrescription(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function savePrescriptionChanges(): Promise<boolean> {
     if (!selectedId) {
       setPrescriptionError("Select a patient first.");
-      return;
+      return false;
     }
     if (!selectedMedication) {
       setPrescriptionFieldErrors((prev) => ({
         ...prev,
         medicationId: "Select a medication from search results."
       }));
-      return;
+      return false;
     }
     const medicationId = selectedMedication.id;
 
@@ -484,7 +554,7 @@ function PatientsSearchContent() {
                 setPrescriptionFieldErrors(confirmedPayload.fieldErrors as Record<string, string>);
               }
               setPrescriptionError(confirmedPayload?.message ?? "Could not save prescription.");
-              return;
+              return false;
             }
 
             setPrescriptionForm(initialPrescriptionForm);
@@ -494,17 +564,17 @@ function PatientsSearchContent() {
             setShowAddPrescriptionForm(false);
             await loadPrescriptions(selectedId);
             await loadPatientEvents(selectedId);
-            return;
+            return true;
           }
 
           setPrescriptionError(payload?.warnings?.[0] ?? "Duplicate prescription was not added.");
-          return;
+          return false;
         }
         if (payload?.fieldErrors && typeof payload.fieldErrors === "object") {
           setPrescriptionFieldErrors(payload.fieldErrors as Record<string, string>);
         }
         setPrescriptionError(payload?.message ?? "Could not save prescription.");
-        return;
+        return false;
       }
 
       setPrescriptionForm(initialPrescriptionForm);
@@ -514,11 +584,18 @@ function PatientsSearchContent() {
       setShowAddPrescriptionForm(false);
       await loadPrescriptions(selectedId);
       await loadPatientEvents(selectedId);
+      return true;
     } catch {
       setPrescriptionError("Network error while saving prescription.");
+      return false;
     } finally {
       setPrescriptionSaving(false);
     }
+  }
+
+  async function submitPrescription(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await savePrescriptionChanges();
   }
 
   async function togglePrescriptionStatus(prescriptionId: string, makeActive: boolean) {
@@ -549,14 +626,13 @@ function PatientsSearchContent() {
     }
   }
 
-  async function submitPatientNote(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedId) return;
+  async function savePatientNoteChanges(): Promise<boolean> {
+    if (!selectedId) return false;
 
     const trimmed = noteText.trim();
     if (!trimmed) {
       setNoteError("Note is required.");
-      return;
+      return false;
     }
 
     setNoteSaving(true);
@@ -572,18 +648,25 @@ function PatientsSearchContent() {
       const payload = (await response.json()) as ApiResponse<PatientNoteRecord>;
       if (!response.ok) {
         setNoteError(payload?.message ?? "Could not save note.");
-        return;
+        return false;
       }
 
       setNoteText("");
       setNoteSuccess("Note added.");
       setShowNoteForm(false);
       await loadPatientNotes(selectedId);
+      return true;
     } catch {
       setNoteError("Network error while saving note.");
+      return false;
     } finally {
       setNoteSaving(false);
     }
+  }
+
+  async function submitPatientNote(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await savePatientNoteChanges();
   }
 
   function onEditChange<K extends keyof PatientEditFormState>(key: K, value: PatientEditFormState[K]) {
@@ -595,9 +678,8 @@ function PatientsSearchContent() {
     });
   }
 
-  async function submitPatientEdit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedId) return;
+  async function savePatientEditChanges(): Promise<boolean> {
+    if (!selectedId) return false;
 
     setEditSaving(true);
     setEditError(null);
@@ -621,7 +703,7 @@ function PatientsSearchContent() {
           setEditWarnings(payload.warnings as string[]);
         }
         setEditError(payload?.message ?? "Could not save patient.");
-        return;
+        return false;
       }
 
       const warnings = Array.isArray(payload?.warnings) ? (payload.warnings as string[]) : [];
@@ -631,11 +713,18 @@ function PatientsSearchContent() {
       setShowEditForm(false);
       await loadPatients(query);
       await loadPatientEvents(selectedId);
+      return true;
     } catch {
       setEditError("Network error while saving patient.");
+      return false;
     } finally {
       setEditSaving(false);
     }
+  }
+
+  async function submitPatientEdit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await savePatientEditChanges();
   }
 
   function handlePrintSummary() {
@@ -732,12 +821,83 @@ function PatientsSearchContent() {
         <p className="hero-kicker">Patient Lookup</p>
         <h1 className="section-title">Search Patients</h1>
         <p className="hint">Type a name, phone digits, or DOB to instantly filter your patient records.</p>
-        <div className="pill-row">
-          <span className="pill">Live Search</span>
-          <span className="pill">Name + DOB + Phone</span>
-          <span className="pill">{patients.length} Visible</span>
-        </div>
       </div>
+
+      {searchPromptOpen ? (
+        <div className="workflow-modal-backdrop" role="presentation">
+          <div
+            className="workflow-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="workflow-modal-title"
+            aria-describedby="workflow-modal-description"
+          >
+            <div className="panel-header">
+              <h2 className="section-title" id="workflow-modal-title">
+                Unsaved Changes
+              </h2>
+              <span className="section-chip">Before leaving search</span>
+            </div>
+            <p className="hint" id="workflow-modal-description">
+              You have unsaved work in this patient chart. Save it now, keep editing, or discard the changes and return
+              to search.
+            </p>
+            {searchPromptError ? <div className="msg warning">{searchPromptError}</div> : null}
+            <div className="workflow-modal-actions">
+              <button
+                type="button"
+                className="btn"
+                disabled={searchPromptSaving}
+                onClick={async () => {
+                  setSearchPromptSaving(true);
+                  setSearchPromptError(null);
+                  const actions = [
+                    editFormIsDirty ? savePatientEditChanges : null,
+                    prescriptionFormIsDirty ? savePrescriptionChanges : null,
+                    noteFormIsDirty ? savePatientNoteChanges : null
+                  ];
+
+                  let saved = true;
+                  for (const action of actions) {
+                    if (!action) continue;
+                    saved = await action();
+                    if (!saved) break;
+                  }
+
+                  setSearchPromptSaving(false);
+                  if (saved) {
+                    resetToSearchWorkflow();
+                    return;
+                  }
+
+                  setSearchPromptError("Some changes could not be saved. Review the form messages and try again.");
+                }}
+              >
+                {searchPromptSaving ? "Saving..." : "Save Changes"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-soft"
+                onClick={() => {
+                  setSearchPromptOpen(false);
+                  setSearchPromptError(null);
+                }}
+              >
+                Continue Editing
+              </button>
+              <button
+                type="button"
+                className="btn btn-soft"
+                onClick={() => {
+                  resetToSearchWorkflow();
+                }}
+              >
+                Discard Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <section className={selectedPatient ? "focus-layout" : "search-layout"}>
         {!selectedPatient ? (
@@ -821,19 +981,6 @@ function PatientsSearchContent() {
                 <button type="button" className="btn btn-soft" onClick={focusPrescriptionForm}>
                   Add New Prescription
                 </button>
-                <button
-                  type="button"
-                  className="btn btn-soft"
-                  onClick={() => {
-                    setSelectedId(null);
-                    setSelectedPatient(null);
-                    setMedicationQuery("");
-                    setSelectedMedication(null);
-                    setPrescriptionForm(initialPrescriptionForm);
-                  }}
-                  >
-                    Change Patient
-                  </button>
               </div>
 
               {showEditForm ? (

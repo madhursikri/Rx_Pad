@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useWorkflowNavigation } from "@/app/components/workflow-navigation-provider";
 
 const workflowLinks = [
   {
@@ -31,6 +32,7 @@ function isLinkMatch(pathname: string, href: string): boolean {
 
 export function WorkflowSidebar() {
   const pathname = usePathname();
+  const { getSearchPatientsAction } = useWorkflowNavigation();
   const activeHref =
     workflowLinks
       .filter((link) => isLinkMatch(pathname, link.href))
@@ -52,6 +54,7 @@ export function WorkflowSidebar() {
         <nav className="sidebar-nav">
           {workflowLinks.map((link) => {
             const active = activeHref === link.href;
+            const isSearchPatients = link.href === "/patients";
 
             return (
               <Link
@@ -59,6 +62,13 @@ export function WorkflowSidebar() {
                 href={link.href}
                 className={active ? "sidebar-link active" : "sidebar-link"}
                 aria-current={active ? "page" : undefined}
+                onClick={(event) => {
+                  if (!isSearchPatients) return;
+                  const searchPatientsAction = getSearchPatientsAction();
+                  if (!searchPatientsAction) return;
+                  event.preventDefault();
+                  searchPatientsAction();
+                }}
               >
                 <span>{link.label}</span>
                 <small>{link.description}</small>
