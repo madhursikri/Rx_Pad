@@ -37,7 +37,7 @@ describe("cloudflare repository", () => {
     const warnings = await findDuplicatePatientWarnings(db, {
       firstName: "Emma",
       lastName: "Carter",
-      dob: "1988-04-12",
+      dob: new Date("1988-04-12T00:00:00.000Z"),
       phoneCountryCode: "+1",
       phone: "4155550188",
       phoneE164: "+14155550188"

@@ -1,7 +1,11 @@
 export const DEFAULT_COUNTRY_CODE = "+1";
 
+export function getDefaultCountryCodeForLocale(locale: string): string {
+  return locale.toLowerCase().includes("-in") ? "+91" : DEFAULT_COUNTRY_CODE;
+}
+
 export const COUNTRY_CODES = [
-  { code: "+1", label: "US / Canada (+1)" },
+  { code: "+1", label: "United States / Canada (+1)" },
   { code: "+91", label: "India (+91)" },
   { code: "+44", label: "UK (+44)" },
   { code: "+61", label: "Australia (+61)" },

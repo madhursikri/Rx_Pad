@@ -2,6 +2,7 @@ import React from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { LocaleProvider } from "@/app/components/locale-provider";
 import { WorkflowNavigationProvider } from "@/app/components/workflow-navigation-provider";
 import { WorkflowSidebar } from "@/app/components/workflow-sidebar";
 import SearchPatientsPage from "@/app/patients/page";
@@ -32,24 +33,41 @@ const patient = {
   createdAt: "2026-03-02T09:00:00.000Z"
 };
 
+const additionalPatients = Array.from({ length: 11 }, (_, index) => {
+  const number = index + 2;
+  return {
+    id: `patient-${number}`,
+    firstName: `Patient ${number}`,
+    lastName: "Example",
+    dob: `198${number % 10}-01-0${(number % 9) + 1}T00:00:00.000Z`,
+    gender: "female",
+    phoneCountryCode: "+1",
+    phone: `41555501${String(number).padStart(2, "0")}`,
+    updatedAt: `2026-03-${String(number).padStart(2, "0")}T10:45:00.000Z`
+  };
+});
+
+const patientSummaries = [
+  {
+    id: patient.id,
+    firstName: patient.firstName,
+    lastName: patient.lastName,
+    dob: patient.dob,
+    gender: patient.gender,
+    phoneCountryCode: patient.phoneCountryCode,
+    phone: patient.phone,
+    updatedAt: patient.updatedAt
+  },
+  ...additionalPatients
+];
+
 const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
   const method = init?.method ?? "GET";
 
   if (url.includes("/api/patients?query=") && method === "GET") {
     return new Response(
-      JSON.stringify([
-        {
-          id: patient.id,
-          firstName: patient.firstName,
-          lastName: patient.lastName,
-          dob: patient.dob,
-          gender: patient.gender,
-          phoneCountryCode: patient.phoneCountryCode,
-          phone: patient.phone,
-          updatedAt: patient.updatedAt
-        }
-      ]),
+      JSON.stringify(patientSummaries),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -167,6 +185,8 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => 
 describe("patients page", () => {
   beforeEach(() => {
     searchParams.forEach((_, key) => searchParams.delete(key));
+    window.localStorage.clear();
+    window.sessionStorage.clear();
     fetchMock.mockClear();
     vi.stubGlobal("fetch", fetchMock);
     vi.stubGlobal("confirm", vi.fn(() => true));
@@ -175,9 +195,11 @@ describe("patients page", () => {
   it("loads a patient and completes the duplicate-prescription confirm flow", async () => {
     const user = userEvent.setup();
     render(
-      <WorkflowNavigationProvider>
-        <SearchPatientsPage />
-      </WorkflowNavigationProvider>
+      <LocaleProvider>
+        <WorkflowNavigationProvider>
+          <SearchPatientsPage />
+        </WorkflowNavigationProvider>
+      </LocaleProvider>
     );
 
     expect(await screen.findByRole("button", { name: /open emma carter/i })).toBeInTheDocument();
@@ -202,10 +224,12 @@ describe("patients page", () => {
   it("prompts before leaving a dirty patient chart from the sidebar", async () => {
     const user = userEvent.setup();
     render(
-      <WorkflowNavigationProvider>
-        <WorkflowSidebar />
-        <SearchPatientsPage />
-      </WorkflowNavigationProvider>
+      <LocaleProvider>
+        <WorkflowNavigationProvider>
+          <WorkflowSidebar />
+          <SearchPatientsPage />
+        </WorkflowNavigationProvider>
+      </LocaleProvider>
     );
 
     expect(await screen.findByRole("button", { name: /open emma carter/i })).toBeInTheDocument();
@@ -228,5 +252,27 @@ describe("patients page", () => {
 
     await waitFor(() => expect(screen.queryByRole("heading", { name: /patient overview/i })).not.toBeInTheDocument());
     expect(await screen.findByRole("button", { name: /open emma carter/i })).toBeInTheDocument();
+  });
+
+  it("paginates patient search results and stores the page size in session", async () => {
+    const user = userEvent.setup();
+    render(
+      <LocaleProvider>
+        <WorkflowNavigationProvider>
+          <SearchPatientsPage />
+        </WorkflowNavigationProvider>
+      </LocaleProvider>
+    );
+
+    const pageSizeSelect = await screen.findByLabelText(/search patients page size/i);
+    expect(pageSizeSelect).toHaveValue("10");
+
+    await user.selectOptions(pageSizeSelect, "5");
+    expect(await screen.findByText(/showing 1-5 of 12/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /open patient 6 example/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    expect(await screen.findByText(/showing 6-10 of 12/i)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /open patient 6 example/i })).toBeInTheDocument();
   });
 });

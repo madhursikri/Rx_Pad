@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ApiResponse } from "@/lib/api-response";
 import type { MedicationOption } from "@/types/patient";
+import { useSessionNumber } from "@/lib/use-session-number";
 
 type MedicationFormState = {
   name: string;
@@ -22,9 +23,13 @@ const initialForm: MedicationFormState = {
   defaultInstructions: ""
 };
 
+const PAGE_SIZE_OPTIONS = [5, 10, 25, 50, 100];
+
 export default function PrescriptionDatasetPage() {
   const [query, setQuery] = useState("");
   const [entries, setEntries] = useState<MedicationOption[]>([]);
+  const [pageSize, setPageSize] = useSessionNumber("rxpad.prescriptionDataset.pageSize", 10);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<MedicationFormState>(initialForm);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
@@ -35,6 +40,13 @@ export default function PrescriptionDatasetPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const visibleCount = useMemo(() => entries.length, [entries.length]);
+  const visibleEntries = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return entries.slice(start, start + pageSize);
+  }, [entries, page, pageSize]);
+  const pageCount = useMemo(() => Math.max(1, Math.ceil(entries.length / pageSize)), [entries.length, pageSize]);
+  const pageStart = entries.length === 0 ? 0 : (page - 1) * pageSize + 1;
+  const pageEnd = entries.length === 0 ? 0 : Math.min(entries.length, page * pageSize);
   const isEditing = editingEntryId !== null;
 
   async function loadDataset(searchValue: string) {
@@ -60,6 +72,14 @@ export default function PrescriptionDatasetPage() {
     }, 200);
     return () => window.clearTimeout(timeout);
   }, [query]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, pageSize]);
+
+  useEffect(() => {
+    setPage((prev) => Math.min(prev, pageCount));
+  }, [pageCount]);
 
   function onFormChange<K extends keyof MedicationFormState>(key: K, value: MedicationFormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -181,26 +201,69 @@ export default function PrescriptionDatasetPage() {
           {error ? <div className="msg error">{error}</div> : null}
           {success ? <div className="msg success">{success}</div> : null}
 
-          <ul className="rx-list">
-            {loading ? <li className="hint">Loading dataset...</li> : null}
-            {!loading && entries.length === 0 ? <li className="hint">No entries found.</li> : null}
-            {entries.map((entry) => (
-              <li key={entry.id}>
+          <div className="paged-list-shell">
+            <ul className="rx-list">
+              {loading ? <li className="hint">Loading dataset...</li> : null}
+              {!loading && entries.length === 0 ? <li className="hint">No entries found.</li> : null}
+              {!loading &&
+                visibleEntries.map((entry) => (
+                  <li key={entry.id}>
+                    <button
+                      type="button"
+                      className={`rx-card rx-card-selectable ${editingEntryId === entry.id ? "rx-card-selected" : ""}`}
+                      onClick={() => onSelectEntry(entry)}
+                    >
+                      <p className="rx-title">{entry.name}</p>
+                      <p className="rx-meta">Strengths: {entry.commonStrengths ?? "Not specified"}</p>
+                      <p className="rx-meta">
+                        Default: {entry.defaultDose ?? "N/A"} | {entry.defaultFrequency ?? "N/A"} | {entry.defaultDuration ?? "N/A"}
+                      </p>
+                      {entry.defaultInstructions ? <p className="rx-note">Instructions: {entry.defaultInstructions}</p> : null}
+                    </button>
+                  </li>
+                ))}
+            </ul>
+
+            <div className="pagination-toolbar">
+              <div className="pagination-meta">
+                {entries.length === 0 ? "No pages available." : `Showing ${pageStart}-${pageEnd} of ${entries.length}`}
+              </div>
+              <div className="pagination-controls">
+                <label className="pagination-size">
+                  <span>Page size</span>
+                  <select
+                    aria-label="Prescription dataset page size"
+                    value={pageSize}
+                    onChange={(e) => setPageSize(Number(e.target.value))}
+                  >
+                    {PAGE_SIZE_OPTIONS.map((size) => (
+                      <option key={size} value={size}>
+                        {size}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="pagination-nav">
                 <button
                   type="button"
-                  className={`rx-card rx-card-selectable ${editingEntryId === entry.id ? "rx-card-selected" : ""}`}
-                  onClick={() => onSelectEntry(entry)}
+                  className="btn btn-soft btn-xs"
+                  disabled={loading || entries.length === 0 || page <= 1}
+                  onClick={() => setPage((prev) => Math.max(1, prev - 1))}
                 >
-                  <p className="rx-title">{entry.name}</p>
-                  <p className="rx-meta">Strengths: {entry.commonStrengths ?? "Not specified"}</p>
-                  <p className="rx-meta">
-                    Default: {entry.defaultDose ?? "N/A"} | {entry.defaultFrequency ?? "N/A"} | {entry.defaultDuration ?? "N/A"}
-                  </p>
-                  {entry.defaultInstructions ? <p className="rx-note">Instructions: {entry.defaultInstructions}</p> : null}
+                  Previous
                 </button>
-              </li>
-            ))}
-          </ul>
+                <button
+                  type="button"
+                  className="btn btn-soft btn-xs"
+                  disabled={loading || entries.length === 0 || page >= pageCount}
+                  onClick={() => setPage((prev) => Math.min(pageCount, prev + 1))}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <aside className="panel">

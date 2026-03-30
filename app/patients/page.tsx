@@ -2,8 +2,18 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { COUNTRY_CODES, DEFAULT_COUNTRY_CODE } from "@/lib/country-codes";
+import { COUNTRY_CODES, getDefaultCountryCodeForLocale } from "@/lib/country-codes";
+import { useLocale } from "@/app/components/locale-provider";
 import { useWorkflowNavigation } from "@/app/components/workflow-navigation-provider";
+import { useSessionNumber } from "@/lib/use-session-number";
+import {
+  formatAgeFromDob,
+  formatDate,
+  formatDateTime,
+  formatGenderLabel,
+  formatPatientPhone,
+  toDateInputValue
+} from "@/lib/locale";
 import type { ApiResponse } from "@/lib/api-response";
 import type {
   MedicationOption,
@@ -51,7 +61,7 @@ const initialPatientEditForm: PatientEditFormState = {
   lastName: "",
   dob: "",
   gender: "female",
-  phoneCountryCode: DEFAULT_COUNTRY_CODE,
+  phoneCountryCode: "",
   phone: "",
   email: "",
   addressLine1: "",
@@ -69,42 +79,7 @@ const defaultPrescriptionTemplate = {
   instructions: ""
 };
 
-function formatDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString();
-}
-
-function formatDateTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
-}
-
-function formatPatientPhone(phoneCountryCode: string | null, phone: string | null): string {
-  if (!phone) return "Not provided";
-  return phoneCountryCode ? `${phoneCountryCode} ${phone}` : phone;
-}
-
-function getAgeFromDob(dob: string): string {
-  const birthDate = new Date(dob);
-  if (Number.isNaN(birthDate.getTime())) return "Unknown";
-
-  const today = new Date();
-  let age = today.getFullYear() - birthDate.getFullYear();
-  const hasHadBirthday =
-    today.getMonth() > birthDate.getMonth() ||
-    (today.getMonth() === birthDate.getMonth() && today.getDate() >= birthDate.getDate());
-  if (!hasHadBirthday) age -= 1;
-
-  return age >= 0 ? `${age}` : "Unknown";
-}
-
-function toDateInputValue(value: string | Date): string {
-  const date = typeof value === "string" ? new Date(value) : value;
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toISOString().slice(0, 10);
-}
+const PAGE_SIZE_OPTIONS = [5, 10, 25, 50, 100];
 
 function toPatientEditForm(patient: PatientDetail): PatientEditFormState {
   return {
@@ -112,7 +87,7 @@ function toPatientEditForm(patient: PatientDetail): PatientEditFormState {
     lastName: patient.lastName,
     dob: toDateInputValue(patient.dob),
     gender: patient.gender,
-    phoneCountryCode: patient.phoneCountryCode ?? DEFAULT_COUNTRY_CODE,
+    phoneCountryCode: patient.phoneCountryCode ?? "",
     phone: patient.phone ?? "",
     email: patient.email ?? "",
     addressLine1: patient.addressLine1 ?? "",
@@ -149,11 +124,17 @@ function areFormsEqual<T extends Record<string, unknown>>(left: T, right: T): bo
 function PatientsSearchContent() {
   const searchParams = useSearchParams();
   const { registerSearchPatientsAction } = useWorkflowNavigation();
+  const { locale, region } = useLocale();
   const createdId = useMemo(() => searchParams.get("created"), [searchParams]);
   const createdWarning = useMemo(() => searchParams.get("warning"), [searchParams]);
+  const defaultCountryCode = useMemo(() => getDefaultCountryCodeForLocale(locale), [locale]);
+  const postalCodeLabel = region === "IN" ? "PIN Code" : "ZIP Code";
+  const postalCodePlaceholder = region === "IN" ? "560001" : "94107";
 
   const [query, setQuery] = useState("");
   const [patients, setPatients] = useState<PatientSummary[]>([]);
+  const [patientPageSize, setPatientPageSize] = useSessionNumber("rxpad.patients.pageSize", 10);
+  const [patientPage, setPatientPage] = useState(1);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<PatientDetail | null>(null);
   const [listLoading, setListLoading] = useState(false);
@@ -199,6 +180,13 @@ function PatientsSearchContent() {
   const activePrescriptions = useMemo(() => prescriptions.filter((item) => item.isActive), [prescriptions]);
   const inactivePrescriptions = useMemo(() => prescriptions.filter((item) => !item.isActive), [prescriptions]);
   const timelineEvents = useMemo(() => [...patientEvents].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt)), [patientEvents]);
+  const visiblePatients = useMemo(() => {
+    const start = (patientPage - 1) * patientPageSize;
+    return patients.slice(start, start + patientPageSize);
+  }, [patients, patientPage, patientPageSize]);
+  const patientPageCount = useMemo(() => Math.max(1, Math.ceil(patients.length / patientPageSize)), [patients.length, patientPageSize]);
+  const patientPageStart = patients.length === 0 ? 0 : (patientPage - 1) * patientPageSize + 1;
+  const patientPageEnd = patients.length === 0 ? 0 : Math.min(patients.length, patientPage * patientPageSize);
   const selectedPatientEditForm = useMemo(
     () => (selectedPatient ? toPatientEditForm(selectedPatient) : initialPatientEditForm),
     [selectedPatient]
@@ -346,6 +334,14 @@ function PatientsSearchContent() {
       window.clearTimeout(timeout);
     };
   }, [query]);
+
+  useEffect(() => {
+    setPatientPage(1);
+  }, [query, patientPageSize]);
+
+  useEffect(() => {
+    setPatientPage((prev) => Math.min(prev, patientPageCount));
+  }, [patientPageCount]);
 
   useEffect(() => {
     if (createdId) {
@@ -688,26 +684,31 @@ function PatientsSearchContent() {
     setEditFieldErrors({});
 
     try {
+      const requestBody = {
+        ...editForm,
+        phoneCountryCode: editForm.phone ? editForm.phoneCountryCode || defaultCountryCode : ""
+      };
+
       const response = await fetch(`/api/patients/${selectedId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editForm)
+        body: JSON.stringify(requestBody)
       });
 
-      const payload = (await response.json()) as ApiResponse<PatientDetail & { warnings?: string[] }>;
+      const responsePayload = (await response.json()) as ApiResponse<PatientDetail & { warnings?: string[] }>;
       if (!response.ok) {
-        if (payload?.fieldErrors && typeof payload.fieldErrors === "object") {
-          setEditFieldErrors(payload.fieldErrors as Record<string, string>);
+        if (responsePayload?.fieldErrors && typeof responsePayload.fieldErrors === "object") {
+          setEditFieldErrors(responsePayload.fieldErrors as Record<string, string>);
         }
-        if (Array.isArray(payload?.warnings)) {
-          setEditWarnings(payload.warnings as string[]);
+        if (Array.isArray(responsePayload?.warnings)) {
+          setEditWarnings(responsePayload.warnings as string[]);
         }
-        setEditError(payload?.message ?? "Could not save patient.");
+        setEditError(responsePayload?.message ?? "Could not save patient.");
         return false;
       }
 
-      const warnings = Array.isArray(payload?.warnings) ? (payload.warnings as string[]) : [];
-      setSelectedPatient(payload as PatientDetail);
+      const warnings = Array.isArray(responsePayload?.warnings) ? (responsePayload.warnings as string[]) : [];
+      setSelectedPatient(responsePayload as PatientDetail);
       setEditWarnings(warnings);
       setEditSuccess("Patient updated successfully.");
       setShowEditForm(false);
@@ -735,7 +736,7 @@ function PatientsSearchContent() {
 
     const noteRows = patientNotes
       .map(
-        (note) => `<li><strong>${escapeHtml(formatDateTime(note.createdAt))}</strong><br />${escapeHtml(note.note)}</li>`
+        (note) => `<li><strong>${escapeHtml(formatDateTime(note.createdAt, locale))}</strong><br />${escapeHtml(note.note)}</li>`
       )
       .join("");
     const activeRows = activePrescriptions
@@ -753,7 +754,7 @@ function PatientsSearchContent() {
     const timelineRows = timelineEvents
       .map(
         (item) =>
-          `<li><strong>${escapeHtml(formatDateTime(item.createdAt))}</strong> ${escapeHtml(item.title)}${item.details ? `<br />${escapeHtml(item.details)}` : ""}</li>`
+          `<li><strong>${escapeHtml(formatDateTime(item.createdAt, locale))}</strong> ${escapeHtml(item.title)}${item.details ? `<br />${escapeHtml(item.details)}` : ""}</li>`
       )
       .join("");
 
@@ -777,9 +778,9 @@ function PatientsSearchContent() {
           <section class="card">
             <div class="meta">
               <div><strong>Name:</strong> ${escapeHtml(selectedPatient.firstName)} ${escapeHtml(selectedPatient.lastName)}</div>
-              <div><strong>DOB:</strong> ${escapeHtml(formatDate(selectedPatient.dob))}</div>
-              <div><strong>Age:</strong> ${escapeHtml(getAgeFromDob(selectedPatient.dob))}</div>
-              <div><strong>Gender:</strong> ${escapeHtml(selectedPatient.gender.replace(/_/g, " "))}</div>
+              <div><strong>DOB:</strong> ${escapeHtml(formatDate(selectedPatient.dob, locale))}</div>
+              <div><strong>Age:</strong> ${escapeHtml(formatAgeFromDob(selectedPatient.dob, locale))}</div>
+              <div><strong>Gender:</strong> ${escapeHtml(formatGenderLabel(selectedPatient.gender))}</div>
               <div><strong>Phone:</strong> ${escapeHtml(formatPatientPhone(selectedPatient.phoneCountryCode, selectedPatient.phone))}</div>
               <div><strong>Email:</strong> ${escapeHtml(selectedPatient.email ?? "Not provided")}</div>
             </div>
@@ -920,33 +921,76 @@ function PatientsSearchContent() {
             {createdWarning ? <div className="msg warning">{createdWarning}</div> : null}
             {error ? <div className="msg error">{error}</div> : null}
 
-            <ul className="patient-list" aria-live="polite">
-              {listLoading ? <li className="hint">Loading patients...</li> : null}
-              {!listLoading && patients.length === 0 ? <li className="hint">No patients found.</li> : null}
-              {patients.map((patient) => (
-                <li
-                  key={patient.id}
-                  className={`patient-item ${selectedId === patient.id ? "active" : ""}`}
-                  onClick={() => setSelectedId(patient.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      setSelectedId(patient.id);
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Open ${patient.firstName} ${patient.lastName}`}
-                >
-                  <p className="patient-name">
-                    {patient.firstName} {patient.lastName}
-                  </p>
-                  <p className="patient-meta">
-                    DOB: {formatDate(patient.dob)} | Phone: {formatPatientPhone(patient.phoneCountryCode, patient.phone)}
-                  </p>
-                </li>
-              ))}
-            </ul>
+            <div className="paged-list-shell">
+              <ul className="patient-list" aria-live="polite">
+                {listLoading ? <li className="hint">Loading patients...</li> : null}
+                {!listLoading && patients.length === 0 ? <li className="hint">No patients found.</li> : null}
+                {!listLoading &&
+                  visiblePatients.map((patient) => (
+                    <li
+                      key={patient.id}
+                      className={`patient-item ${selectedId === patient.id ? "active" : ""}`}
+                      onClick={() => setSelectedId(patient.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelectedId(patient.id);
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Open ${patient.firstName} ${patient.lastName}`}
+                    >
+                      <p className="patient-name">
+                        {patient.firstName} {patient.lastName}
+                      </p>
+                      <p className="patient-meta">
+                        DOB: {formatDate(patient.dob, locale)} | Phone: {formatPatientPhone(patient.phoneCountryCode, patient.phone)}
+                      </p>
+                    </li>
+                  ))}
+              </ul>
+
+              <div className="pagination-toolbar">
+                <div className="pagination-meta">
+                  {patients.length === 0 ? "No pages available." : `Showing ${patientPageStart}-${patientPageEnd} of ${patients.length}`}
+                </div>
+                <div className="pagination-controls">
+                  <label className="pagination-size">
+                    <span>Page size</span>
+                    <select
+                      aria-label="Search patients page size"
+                      value={patientPageSize}
+                      onChange={(e) => setPatientPageSize(Number(e.target.value))}
+                    >
+                      {PAGE_SIZE_OPTIONS.map((size) => (
+                        <option key={size} value={size}>
+                          {size}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="pagination-nav">
+                  <button
+                    type="button"
+                    className="btn btn-soft btn-xs"
+                    disabled={listLoading || patients.length === 0 || patientPage <= 1}
+                    onClick={() => setPatientPage((prev) => Math.max(1, prev - 1))}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-soft btn-xs"
+                    disabled={listLoading || patients.length === 0 || patientPage >= patientPageCount}
+                    onClick={() => setPatientPage((prev) => Math.min(patientPageCount, prev + 1))}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         ) : null}
 
@@ -1052,7 +1096,7 @@ function PatientsSearchContent() {
                         <div className="phone-input-group">
                           <select
                             aria-label="Phone country code"
-                            value={editForm.phoneCountryCode}
+                            value={editForm.phoneCountryCode || defaultCountryCode}
                             onChange={(e) => onEditChange("phoneCountryCode", e.target.value)}
                           >
                             {COUNTRY_CODES.map((entry) => (
@@ -1114,11 +1158,12 @@ function PatientsSearchContent() {
                       </label>
 
                       <label>
-                        <span>Postal Code</span>
+                        <span>{postalCodeLabel}</span>
                         <input
                           type="text"
                           value={editForm.postalCode}
                           onChange={(e) => onEditChange("postalCode", e.target.value)}
+                          placeholder={postalCodePlaceholder}
                         />
                       </label>
 
@@ -1149,12 +1194,12 @@ function PatientsSearchContent() {
                 <div className="demographic-pill">
                   <small>Age / DOB</small>
                   <strong>
-                    {getAgeFromDob(selectedPatient.dob)} years | {formatDate(selectedPatient.dob)}
+                    {formatAgeFromDob(selectedPatient.dob, locale)} years | {formatDate(selectedPatient.dob, locale)}
                   </strong>
                 </div>
                 <div className="demographic-pill">
                   <small>Gender</small>
-                  <strong>{selectedPatient.gender.replace(/_/g, " ")}</strong>
+                  <strong>{formatGenderLabel(selectedPatient.gender)}</strong>
                 </div>
                 <div className="demographic-pill">
                   <small>Phone</small>
@@ -1181,7 +1226,7 @@ function PatientsSearchContent() {
                         <p className="rx-meta">
                           Frequency: {prescription.frequency} | Duration: {prescription.duration}
                         </p>
-                        <p className="rx-meta">Added: {formatDate(prescription.createdAt)}</p>
+                        <p className="rx-meta">Added: {formatDate(prescription.createdAt, locale)}</p>
                         {prescription.instructions ? <p className="rx-note">Instructions: {prescription.instructions}</p> : null}
                         <div className="rx-row-actions">
                           <button
@@ -1224,7 +1269,7 @@ function PatientsSearchContent() {
                               Frequency: {prescription.frequency} | Duration: {prescription.duration}
                             </p>
                             <p className="rx-meta">
-                              Inactivated: {prescription.inactivatedAt ? formatDate(prescription.inactivatedAt) : "Unknown"}
+                              Inactivated: {prescription.inactivatedAt ? formatDate(prescription.inactivatedAt, locale) : "Unknown"}
                             </p>
                             {prescription.instructions ? <p className="rx-note">Instructions: {prescription.instructions}</p> : null}
                             <div className="rx-row-actions">
@@ -1398,7 +1443,7 @@ function PatientsSearchContent() {
                   <ul className="note-entry-list">
                     {patientNotes.map((note) => (
                       <li key={note.id} className="note-entry">
-                        <div className="note-entry-date">{formatDateTime(note.createdAt)}</div>
+                        <div className="note-entry-date">{formatDateTime(note.createdAt, locale)}</div>
                         <p>{note.note}</p>
                       </li>
                     ))}
@@ -1427,7 +1472,7 @@ function PatientsSearchContent() {
                     {timelineEvents.map((event) => (
                       <li key={event.id} className="timeline-item">
                         <div className="timeline-top">
-                          <span>{formatDateTime(event.createdAt)}</span>
+                          <span>{formatDateTime(event.createdAt, locale)}</span>
                           <strong>{event.title}</strong>
                         </div>
                         <p>{event.details ?? event.type.replace(/_/g, " ").toLowerCase()}</p>

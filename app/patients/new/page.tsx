@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { COUNTRY_CODES, DEFAULT_COUNTRY_CODE } from "@/lib/country-codes";
+import { COUNTRY_CODES, getDefaultCountryCodeForLocale } from "@/lib/country-codes";
+import { useLocale } from "@/app/components/locale-provider";
+import { getDobInputPlaceholder, normalizeDobInput } from "@/lib/locale";
 import type { ApiResponse } from "@/lib/api-response";
 
 type FormState = {
@@ -26,7 +28,7 @@ const initialState: FormState = {
   lastName: "",
   dob: "",
   gender: "female",
-  phoneCountryCode: DEFAULT_COUNTRY_CODE,
+  phoneCountryCode: "",
   phone: "",
   email: "",
   addressLine1: "",
@@ -39,13 +41,17 @@ const initialState: FormState = {
 
 export default function NewPatientPage() {
   const router = useRouter();
+  const { locale, region } = useLocale();
   const [form, setForm] = useState<FormState>(initialState);
   const [saving, setSaving] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  const maxDob = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const defaultCountryCode = useMemo(() => getDefaultCountryCodeForLocale(locale), [locale]);
+  const dobPlaceholder = useMemo(() => getDobInputPlaceholder(locale), [locale]);
+  const postalCodeLabel = region === "IN" ? "PIN Code" : "ZIP Code";
+  const postalCodePlaceholder = region === "IN" ? "560001" : "94107";
 
   function onChange<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -63,11 +69,17 @@ export default function NewPatientPage() {
     setSuccess(null);
     setFieldErrors({});
 
+    const requestBody = {
+      ...form,
+      dob: normalizeDobInput(form.dob, locale),
+      phoneCountryCode: form.phone ? form.phoneCountryCode || defaultCountryCode : ""
+    };
+
     try {
       const response = await fetch("/api/patients", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form)
+        body: JSON.stringify(requestBody)
       });
 
       const payload = (await response.json()) as ApiResponse<{ id: string; warnings?: string[] }>;
@@ -133,12 +145,15 @@ export default function NewPatientPage() {
           <label>
             <span className="required">Date of Birth</span>
             <input
-              type="date"
+              type="text"
               value={form.dob}
-              max={maxDob}
               onChange={(e) => onChange("dob", e.target.value)}
+              placeholder={dobPlaceholder}
+              inputMode="numeric"
+              pattern="\\d{2}/\\d{2}/\\d{4}|\\d{4}-\\d{2}-\\d{2}"
               required
             />
+            <span className="hint">Use {dobPlaceholder}.</span>
             {fieldErrors.dob ? <span className="field-error">{fieldErrors.dob}</span> : null}
           </label>
 
@@ -160,7 +175,7 @@ export default function NewPatientPage() {
             <div className="phone-input-group">
               <select
                 aria-label="Phone country code"
-                value={form.phoneCountryCode}
+                value={form.phoneCountryCode || defaultCountryCode}
                 onChange={(e) => onChange("phoneCountryCode", e.target.value)}
               >
                 {COUNTRY_CODES.map((entry) => (
@@ -224,12 +239,13 @@ export default function NewPatientPage() {
           </label>
 
           <label>
-            <span>Postal Code</span>
+            <span>{postalCodeLabel}</span>
             <input
               type="text"
               value={form.postalCode}
               onChange={(e) => onChange("postalCode", e.target.value)}
               autoComplete="postal-code"
+              placeholder={postalCodePlaceholder}
             />
           </label>
 

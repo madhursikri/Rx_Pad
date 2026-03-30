@@ -13,7 +13,19 @@ const medications = [
     defaultFrequency: "Three times daily",
     defaultDuration: "7 days",
     defaultInstructions: "Take after food"
-  }
+  },
+  ...Array.from({ length: 11 }, (_, index) => {
+    const number = index + 2;
+    return {
+      id: `med-${number}`,
+      name: `Medication ${number}`,
+      commonStrengths: `${number * 10} mg`,
+      defaultDose: "1 tablet",
+      defaultFrequency: "Once daily",
+      defaultDuration: "14 days",
+      defaultInstructions: "Take with water"
+    };
+  })
 ];
 
 const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -72,6 +84,7 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => 
 
 describe("prescription dataset page", () => {
   beforeEach(() => {
+    window.sessionStorage.clear();
     fetchMock.mockClear();
     vi.stubGlobal("fetch", fetchMock);
   });
@@ -105,5 +118,21 @@ describe("prescription dataset page", () => {
 
     await waitFor(() => expect(screen.getByText("Prescription dataset entry deleted.")).toBeInTheDocument());
     expect(fetchMock).toHaveBeenCalledWith("/api/medications/med-amoxicillin", expect.objectContaining({ method: "DELETE" }));
+  });
+
+  it("paginates dataset entries and stores the page size in session", async () => {
+    const user = userEvent.setup();
+    render(<PrescriptionDatasetPage />);
+
+    const pageSizeSelect = await screen.findByLabelText(/prescription dataset page size/i);
+    expect(pageSizeSelect).toHaveValue("10");
+
+    await user.selectOptions(pageSizeSelect, "5");
+    expect(await screen.findByText(/showing 1-5 of 12/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /medication 6/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    expect(await screen.findByText(/showing 6-10 of 12/i)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /medication 6/i })).toBeInTheDocument();
   });
 });
