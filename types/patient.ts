@@ -32,6 +32,12 @@ export type MedicationOption = {
   defaultInstructions: string | null;
 };
 
+export type DiagnosisOption = {
+  id: string;
+  name: string;
+  description: string | null;
+};
+
 export type PrescriptionRecord = {
   id: string;
   medicationName: string;
@@ -48,6 +54,13 @@ export type PrescriptionRecord = {
 export type PatientNoteRecord = {
   id: string;
   note: string;
+  createdAt: string;
+};
+
+export type PatientDiagnosisRecord = {
+  id: string;
+  diagnosisId: string;
+  diagnosisName: string;
   createdAt: string;
 };
 

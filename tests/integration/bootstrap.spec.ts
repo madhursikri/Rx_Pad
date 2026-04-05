@@ -56,4 +56,63 @@ describe("database bootstrap", () => {
     expect((await countRows(db, "Medication"))?.count ?? 0).toBe(6);
     expect((await countRows(db, "Prescription"))?.count ?? 0).toBe(5);
   });
+
+  it("migrates legacy diagnosis columns out of existing databases", async () => {
+    const db = await createTestD1Database();
+    await seedSql(
+      db,
+      `
+        PRAGMA foreign_keys = ON;
+        CREATE TABLE Patient (
+          id TEXT PRIMARY KEY,
+          firstName TEXT NOT NULL,
+          lastName TEXT NOT NULL,
+          dob TEXT NOT NULL,
+          gender TEXT NOT NULL,
+          phoneCountryCode TEXT,
+          phone TEXT,
+          phoneE164 TEXT,
+          email TEXT,
+          addressLine1 TEXT,
+          addressLine2 TEXT,
+          city TEXT,
+          state TEXT,
+          postalCode TEXT,
+          notes TEXT,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL
+        );
+        CREATE TABLE Diagnosis (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          icd10Code TEXT,
+          description TEXT,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL
+        );
+        CREATE TABLE PatientDiagnosis (
+          id TEXT PRIMARY KEY,
+          patientId TEXT NOT NULL,
+          diagnosisId TEXT NOT NULL,
+          diagnosisName TEXT NOT NULL,
+          diagnosisCode TEXT,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL
+        );
+        INSERT INTO Patient VALUES ('patient-1', 'Test', 'Patient', '1990-01-01', 'female', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-03-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z');
+        INSERT INTO Diagnosis VALUES ('diag-1', 'Legacy diagnosis', 'X99.9', 'Legacy description', '2026-03-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z');
+        INSERT INTO PatientDiagnosis VALUES ('pd-1', 'patient-1', 'diag-1', 'Legacy diagnosis', 'X99.9', '2026-03-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z');
+      `
+    );
+
+    await ensureDatabaseReady(db, "production");
+
+    const diagnosisColumns = (await db.prepare("PRAGMA table_info(Diagnosis)").all<{ name: string }>()).results;
+    const patientDiagnosisColumns = (await db.prepare("PRAGMA table_info(PatientDiagnosis)").all<{ name: string }>()).results;
+
+    expect(diagnosisColumns.map((column) => column.name)).not.toContain("icd10Code");
+    expect(patientDiagnosisColumns.map((column) => column.name)).not.toContain("diagnosisCode");
+    expect((await countRows(db, "Diagnosis"))?.count ?? 0).toBe(1);
+    expect((await countRows(db, "PatientDiagnosis"))?.count ?? 0).toBe(1);
+  });
 });

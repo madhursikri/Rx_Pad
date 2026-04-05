@@ -35,6 +35,10 @@ Set up Cloudflare Access in the Cloudflare dashboard:
 6. Enable **One-time PIN** as the sign-in method.
 7. Set a session duration that fits your workflow, such as a workday or a week.
 
+The logout button is wired through the deployment config in [wrangler.toml](/c:/Users/madhu/git/Rx_Pad/wrangler.toml) using `NEXT_PUBLIC_CLOUDFLARE_ACCESS_TEAM_DOMAIN`. Set that to your Cloudflare team domain, such as `your-team.cloudflareaccess.com`, so the app logs out through the team-domain Access endpoint instead of the app-domain path. Cloudflare's own logout endpoint is what clears the Access session because the app itself does not store login state.
+
+To find the team domain in Zero Trust, open the Cloudflare dashboard and go to **Zero Trust** -> **Settings** -> **Team name and domain**. The value you want is the `your-team.cloudflareaccess.com` part of your Access URLs.
+
 If you later want separate access tiers, add them in Cloudflare Access with groups or multiple policies. Do not add a custom role system inside Rx Pad unless you really need one.
 
 ## What Lives Where
@@ -49,4 +53,5 @@ If you later want separate access tiers, add them in Cloudflare Access with grou
 - Keep the allowlist small and explicit.
 - Use the same access model for both production and preview if you want consistent behavior.
 - If a user is not approved, Cloudflare should stop them before the app loads.
+- If logout does not prompt for One-time PIN on the next visit, review your Cloudflare Access session duration settings in the Zero Trust dashboard.
 

@@ -11,6 +11,7 @@ describe("home page", () => {
     expect(screen.getByRole("link", { name: /add new patient/i })).toHaveAttribute("href", "/patients/new");
     expect(screen.getByRole("link", { name: /search patients/i })).toHaveAttribute("href", "/patients");
     expect(screen.getByText("Add a patient")).toBeInTheDocument();
+    expect(screen.getByText("Add a diagnosis")).toBeInTheDocument();
     expect(screen.getByText("Manage medication presets")).toBeInTheDocument();
   });
 });

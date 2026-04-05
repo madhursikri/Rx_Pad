@@ -69,6 +69,51 @@ export const PREVIEW_MEDICATIONS = [
   }
 ] as const;
 
+export const PREVIEW_DIAGNOSES = [
+  {
+    id: "diag-acute-pharyngitis",
+    name: "Acute pharyngitis",
+    description: "Sore throat with or without fever.",
+    createdAt: "2026-03-01T09:00:00.000Z",
+    updatedAt: "2026-03-01T09:00:00.000Z"
+  },
+  {
+    id: "diag-type-2-diabetes",
+    name: "Type 2 diabetes mellitus",
+    description: "Diabetes without documented complications.",
+    createdAt: "2026-03-01T09:05:00.000Z",
+    updatedAt: "2026-03-01T09:05:00.000Z"
+  },
+  {
+    id: "diag-essential-hypertension",
+    name: "Essential hypertension",
+    description: "Primary high blood pressure.",
+    createdAt: "2026-03-01T09:10:00.000Z",
+    updatedAt: "2026-03-01T09:10:00.000Z"
+  },
+  {
+    id: "diag-major-depression",
+    name: "Major depressive disorder",
+    description: "Depressive episode, unspecified.",
+    createdAt: "2026-03-01T09:15:00.000Z",
+    updatedAt: "2026-03-01T09:15:00.000Z"
+  },
+  {
+    id: "diag-asthma",
+    name: "Asthma",
+    description: "Chronic reactive airway disease.",
+    createdAt: "2026-03-01T09:20:00.000Z",
+    updatedAt: "2026-03-01T09:20:00.000Z"
+  },
+  {
+    id: "diag-hyperlipidemia",
+    name: "Hyperlipidemia",
+    description: "Elevated lipids and cholesterol.",
+    createdAt: "2026-03-01T09:25:00.000Z",
+    updatedAt: "2026-03-01T09:25:00.000Z"
+  }
+] as const;
+
 export const PREVIEW_PATIENTS = [
   {
     id: "patient-emma-carter",
@@ -204,6 +249,41 @@ export const PREVIEW_PRESCRIPTIONS = [
     inactivatedAt: null,
     createdAt: "2026-03-11T16:10:00.000Z",
     updatedAt: "2026-03-11T16:10:00.000Z"
+  }
+] as const;
+
+export const PREVIEW_PATIENT_DIAGNOSES = [
+  {
+    id: "pd-emma-pharyngitis",
+    patientId: "patient-emma-carter",
+    diagnosisId: "diag-acute-pharyngitis",
+    diagnosisName: "Acute pharyngitis",
+    createdAt: "2026-03-10T08:30:00.000Z",
+    updatedAt: "2026-03-10T08:30:00.000Z"
+  },
+  {
+    id: "pd-noah-depression",
+    patientId: "patient-noah-kim",
+    diagnosisId: "diag-major-depression",
+    diagnosisName: "Major depressive disorder",
+    createdAt: "2026-03-12T16:30:00.000Z",
+    updatedAt: "2026-03-12T16:30:00.000Z"
+  },
+  {
+    id: "pd-priya-diabetes",
+    patientId: "patient-priya-shah",
+    diagnosisId: "diag-type-2-diabetes",
+    diagnosisName: "Type 2 diabetes mellitus",
+    createdAt: "2026-03-13T07:45:00.000Z",
+    updatedAt: "2026-03-13T07:45:00.000Z"
+  },
+  {
+    id: "pd-priya-hypertension",
+    patientId: "patient-priya-shah",
+    diagnosisId: "diag-essential-hypertension",
+    diagnosisName: "Essential hypertension",
+    createdAt: "2026-03-20T08:00:00.000Z",
+    updatedAt: "2026-03-20T08:00:00.000Z"
   }
 ] as const;
 

@@ -16,9 +16,11 @@ import {
 } from "@/lib/locale";
 import type { ApiResponse } from "@/lib/api-response";
 import type {
+  DiagnosisOption,
   MedicationOption,
   PatientDetail,
   PatientEventRecord,
+  PatientDiagnosisRecord,
   PatientNoteRecord,
   PatientSummary,
   PrescriptionRecord
@@ -145,6 +147,16 @@ function PatientsSearchContent() {
   const [patientEvents, setPatientEvents] = useState<PatientEventRecord[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [timelineError, setTimelineError] = useState<string | null>(null);
+  const [patientDiagnoses, setPatientDiagnoses] = useState<PatientDiagnosisRecord[]>([]);
+  const [patientDiagnosesLoading, setPatientDiagnosesLoading] = useState(false);
+  const [diagnosisQuery, setDiagnosisQuery] = useState("");
+  const [diagnosisOptions, setDiagnosisOptions] = useState<DiagnosisOption[]>([]);
+  const [diagnosisLoading, setDiagnosisLoading] = useState(false);
+  const [selectedDiagnosis, setSelectedDiagnosis] = useState<DiagnosisOption | null>(null);
+  const [diagnosisSaving, setDiagnosisSaving] = useState(false);
+  const [diagnosisError, setDiagnosisError] = useState<string | null>(null);
+  const [diagnosisSuccess, setDiagnosisSuccess] = useState<string | null>(null);
+  const [showAddDiagnosisForm, setShowAddDiagnosisForm] = useState(false);
 
   const [medicationQuery, setMedicationQuery] = useState("");
   const [medicationOptions, setMedicationOptions] = useState<MedicationOption[]>([]);
@@ -198,7 +210,8 @@ function PatientsSearchContent() {
       medicationQuery.trim().length > 0 ||
       !areFormsEqual(prescriptionForm, initialPrescriptionForm));
   const noteFormIsDirty = showNoteForm && noteText.trim().length > 0;
-  const hasUnsavedWork = editFormIsDirty || prescriptionFormIsDirty || noteFormIsDirty;
+  const diagnosisFormIsDirty = showAddDiagnosisForm && (selectedDiagnosis !== null || diagnosisQuery.trim().length > 0);
+  const hasUnsavedWork = editFormIsDirty || prescriptionFormIsDirty || noteFormIsDirty || diagnosisFormIsDirty;
 
   const resetToSearchWorkflow = useCallback(() => {
     setSelectedId(null);
@@ -224,6 +237,15 @@ function PatientsSearchContent() {
     setNoteSuccess(null);
     setNoteText("");
     setTimelineError(null);
+    setDiagnosisError(null);
+    setDiagnosisSuccess(null);
+    setDiagnosisQuery("");
+    setDiagnosisOptions([]);
+    setDiagnosisLoading(false);
+    setPatientDiagnosesLoading(false);
+    setSelectedDiagnosis(null);
+    setShowAddDiagnosisForm(false);
+    setPatientDiagnoses([]);
     setSearchPromptOpen(false);
     setSearchPromptError(null);
     setSearchPromptSaving(false);
@@ -302,6 +324,23 @@ function PatientsSearchContent() {
     }
   }
 
+  async function loadPatientDiagnoses(patientId: string) {
+    setPatientDiagnosesLoading(true);
+    try {
+      const response = await fetch(`/api/patients/${patientId}/diagnoses`);
+      const payload = (await response.json()) as PatientDiagnosisRecord[] | { message?: string };
+      if (!response.ok) {
+        setDiagnosisError((payload as { message?: string }).message ?? "Could not load diagnoses.");
+        return;
+      }
+      setPatientDiagnoses(payload as PatientDiagnosisRecord[]);
+    } catch {
+      setDiagnosisError("Could not load diagnoses.");
+    } finally {
+      setPatientDiagnosesLoading(false);
+    }
+  }
+
   async function loadPatients(searchValue: string, signal?: AbortSignal) {
     setListLoading(true);
     setError(null);
@@ -355,14 +394,23 @@ function PatientsSearchContent() {
       setPrescriptions([]);
       setPatientNotes([]);
       setPatientEvents([]);
+      setPatientDiagnoses([]);
       setEventsLoading(false);
       setTimelineError(null);
       setShowAddPrescriptionForm(false);
       setShowNoteForm(false);
       setShowEditForm(false);
+      setShowAddDiagnosisForm(false);
+      setPatientDiagnosesLoading(false);
+      setDiagnosisLoading(false);
       setEditForm(initialPatientEditForm);
       setEditFieldErrors({});
       setEditWarnings([]);
+      setDiagnosisQuery("");
+      setDiagnosisOptions([]);
+      setSelectedDiagnosis(null);
+      setDiagnosisError(null);
+      setDiagnosisSuccess(null);
       return;
     }
 
@@ -387,6 +435,7 @@ function PatientsSearchContent() {
     loadPrescriptions(selectedId);
     loadPatientNotes(selectedId);
     loadPatientEvents(selectedId);
+    loadPatientDiagnoses(selectedId);
     setPrescriptionError(null);
     setPrescriptionSuccess(null);
     setNoteError(null);
@@ -395,6 +444,12 @@ function PatientsSearchContent() {
     setEditSuccess(null);
     setEditWarnings([]);
     setEditFieldErrors({});
+    setDiagnosisError(null);
+    setDiagnosisSuccess(null);
+    setDiagnosisQuery("");
+    setDiagnosisOptions([]);
+    setSelectedDiagnosis(null);
+    setShowAddDiagnosisForm(false);
     setTimelineError(null);
     setNoteText("");
     setShowAddPrescriptionForm(false);
@@ -434,6 +489,7 @@ function PatientsSearchContent() {
     const search = medicationQuery.trim();
     if (search.length === 0) {
       setMedicationOptions([]);
+      setMedicationLoading(false);
       return;
     }
 
@@ -463,6 +519,42 @@ function PatientsSearchContent() {
       window.clearTimeout(timeout);
     };
   }, [medicationQuery, selectedId]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const search = diagnosisQuery.trim();
+    if (search.length === 0) {
+      setDiagnosisOptions([]);
+      setDiagnosisLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setDiagnosisLoading(true);
+      try {
+        const response = await fetch(`/api/diagnoses?query=${encodeURIComponent(search)}`, {
+          signal: controller.signal
+        });
+        const payload = (await response.json()) as DiagnosisOption[] | { message?: string };
+        if (!response.ok) {
+          setDiagnosisError((payload as { message?: string }).message ?? "Could not load diagnoses.");
+          return;
+        }
+        setDiagnosisOptions(payload as DiagnosisOption[]);
+      } catch (fetchError: unknown) {
+        if (fetchError instanceof DOMException && fetchError.name === "AbortError") return;
+        setDiagnosisError("Could not load diagnoses.");
+      } finally {
+        setDiagnosisLoading(false);
+      }
+    }, 200);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [diagnosisQuery, selectedId]);
 
   function onPrescriptionChange<K extends keyof PrescriptionFormState>(key: K, value: PrescriptionFormState[K]) {
     setPrescriptionForm((prev) => ({ ...prev, [key]: value }));
@@ -502,6 +594,21 @@ function PatientsSearchContent() {
       delete next.medicationId;
       return next;
     });
+  }
+
+  function onDiagnosisInputChange(value: string) {
+    setDiagnosisQuery(value);
+    setDiagnosisError(null);
+    if (selectedDiagnosis && value !== selectedDiagnosis.name) {
+      setSelectedDiagnosis(null);
+    }
+  }
+
+  function selectDiagnosis(diagnosis: DiagnosisOption) {
+    setSelectedDiagnosis(diagnosis);
+    setDiagnosisQuery(diagnosis.name);
+    setDiagnosisOptions([]);
+    setDiagnosisError(null);
   }
 
   async function savePrescriptionChanges(): Promise<boolean> {
@@ -592,6 +699,55 @@ function PatientsSearchContent() {
   async function submitPrescription(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await savePrescriptionChanges();
+  }
+
+  async function saveDiagnosisChanges(): Promise<boolean> {
+    if (!selectedId) {
+      setDiagnosisError("Select a patient first.");
+      return false;
+    }
+    if (!selectedDiagnosis) {
+      setDiagnosisError("Select a diagnosis from search results.");
+      return false;
+    }
+
+    setDiagnosisSaving(true);
+    setDiagnosisError(null);
+    setDiagnosisSuccess(null);
+
+    try {
+      const response = await fetch(`/api/patients/${selectedId}/diagnoses`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          diagnosisId: selectedDiagnosis.id
+        })
+      });
+      const payload = (await response.json()) as ApiResponse<PatientDiagnosisRecord>;
+      if (!response.ok) {
+        setDiagnosisError(payload?.message ?? "Could not save diagnosis.");
+        return false;
+      }
+
+      setDiagnosisQuery("");
+      setSelectedDiagnosis(null);
+      setDiagnosisOptions([]);
+      setShowAddDiagnosisForm(false);
+      setDiagnosisSuccess("Diagnosis added successfully.");
+      await loadPatientDiagnoses(selectedId);
+      await loadPatientEvents(selectedId);
+      return true;
+    } catch {
+      setDiagnosisError("Network error while saving diagnosis.");
+      return false;
+    } finally {
+      setDiagnosisSaving(false);
+    }
+  }
+
+  async function submitPatientDiagnosis(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await saveDiagnosisChanges();
   }
 
   async function togglePrescriptionStatus(prescriptionId: string, makeActive: boolean) {
@@ -757,6 +913,12 @@ function PatientsSearchContent() {
           `<li><strong>${escapeHtml(formatDateTime(item.createdAt, locale))}</strong> ${escapeHtml(item.title)}${item.details ? `<br />${escapeHtml(item.details)}` : ""}</li>`
       )
       .join("");
+    const diagnosisRows = patientDiagnoses
+      .map(
+        (item) =>
+          `<li><strong>${escapeHtml(formatDateTime(item.createdAt, locale))}</strong><br />${escapeHtml(item.diagnosisName)}</li>`
+      )
+      .join("");
 
     popup.document.write(`
       <html>
@@ -786,6 +948,10 @@ function PatientsSearchContent() {
             </div>
           </section>
           <section>
+            <h2>Diagnoses</h2>
+            <ul>${diagnosisRows || "<li class='muted'>No diagnoses available.</li>"}</ul>
+          </section>
+          <section>
             <h2>Active Prescriptions</h2>
             <ul>${activeRows || "<li class='muted'>No active prescriptions.</li>"}</ul>
           </section>
@@ -811,6 +977,14 @@ function PatientsSearchContent() {
   function focusPrescriptionForm() {
     setShowAddPrescriptionForm(true);
     const target = document.getElementById("add-prescription");
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
+  function focusDiagnosisForm() {
+    setShowAddDiagnosisForm(true);
+    const target = document.getElementById("add-diagnosis");
     if (target) {
       target.scrollIntoView({ behavior: "smooth", block: "start" });
     }
@@ -855,7 +1029,8 @@ function PatientsSearchContent() {
                   const actions = [
                     editFormIsDirty ? savePatientEditChanges : null,
                     prescriptionFormIsDirty ? savePrescriptionChanges : null,
-                    noteFormIsDirty ? savePatientNoteChanges : null
+                    noteFormIsDirty ? savePatientNoteChanges : null,
+                    diagnosisFormIsDirty ? saveDiagnosisChanges : null
                   ];
 
                   let saved = true;
@@ -1022,10 +1197,84 @@ function PatientsSearchContent() {
                 <button type="button" className="btn btn-soft" onClick={handlePrintSummary}>
                   Print Summary
                 </button>
-                <button type="button" className="btn btn-soft" onClick={focusPrescriptionForm}>
+              <button type="button" className="btn btn-soft" onClick={focusPrescriptionForm}>
                   Add New Prescription
                 </button>
+                <button type="button" className="btn btn-soft" onClick={focusDiagnosisForm}>
+                  Add Diagnosis
+                </button>
               </div>
+
+              <section className="rx-block" id="patient-diagnoses">
+                <div className="panel-header">
+                  <h3 className="section-title">Diagnoses</h3>
+                  <div className="rx-inline-actions">
+                    <span className="section-chip">{patientDiagnoses.length} total</span>
+                    <button
+                      type="button"
+                      className="btn btn-soft btn-xs"
+                      onClick={() => {
+                        setShowAddDiagnosisForm((prev) => !prev);
+                        setDiagnosisError(null);
+                        setDiagnosisSuccess(null);
+                      }}
+                    >
+                      {showAddDiagnosisForm ? "Close" : "Add Diagnosis Form"}
+                    </button>
+                  </div>
+                </div>
+
+                {showAddDiagnosisForm ? (
+                  <form className="rx-form-grid" id="add-diagnosis" onSubmit={submitPatientDiagnosis} noValidate>
+                    <label className="full">
+                      <span className="required">Search Diagnosis</span>
+                      <input
+                        type="search"
+                        value={diagnosisQuery}
+                        onChange={(e) => onDiagnosisInputChange(e.target.value)}
+                        placeholder="Type diagnosis name"
+                      />
+                      {selectedDiagnosis ? (
+                        <span className="rx-selected">Selected: {selectedDiagnosis.name}</span>
+                      ) : null}
+                    </label>
+
+                    {diagnosisLoading ? <p className="hint full">Searching diagnoses...</p> : null}
+                    {!diagnosisLoading && diagnosisOptions.length > 0 ? (
+                      <ul className="rx-option-list full">
+                        {diagnosisOptions.map((diagnosis) => (
+                          <li key={diagnosis.id}>
+                            <button type="button" className="rx-option" onClick={() => selectDiagnosis(diagnosis)}>
+                              <strong>{diagnosis.name}</strong>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+
+                    <div className="actions full">
+                      <button type="submit" className="btn" disabled={diagnosisSaving}>
+                        {diagnosisSaving ? "Saving..." : "Save Diagnosis"}
+                      </button>
+                    </div>
+                  </form>
+                ) : null}
+
+                {diagnosisError ? <div className="msg error">{diagnosisError}</div> : null}
+                {diagnosisSuccess ? <div className="msg success">{diagnosisSuccess}</div> : null}
+                {patientDiagnosesLoading ? <p className="hint">Loading diagnoses...</p> : null}
+                {!patientDiagnosesLoading && patientDiagnoses.length === 0 ? <p className="hint">No diagnoses recorded.</p> : null}
+                <ul className="note-entry-list">
+                  {patientDiagnoses.map((diagnosis) => (
+                    <li key={diagnosis.id} className="note-entry">
+                      <div className="note-entry-date">{formatDateTime(diagnosis.createdAt, locale)}</div>
+                      <p>
+                        <strong>{diagnosis.diagnosisName}</strong>
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </section>
 
               {showEditForm ? (
                 <section className="rx-block">

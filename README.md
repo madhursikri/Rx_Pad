@@ -8,6 +8,7 @@ Rx Pad intentionally does not include its own login page, passwords, or session 
 The simplest secure setup is to protect the whole Pages site with **Cloudflare Access** and use **One-time PIN** email login for an approved allowlist of users.
 
 See [docs/authentication.md](/c:/Users/madhu/git/Rx_Pad/docs/authentication.md) for the recommended setup.
+See [docs/features.md](/c:/Users/madhu/git/Rx_Pad/docs/features.md) for the current feature inventory, gaps, and roadmap tracker.
 
 ## What Cloudflare Will Handle
 
@@ -71,6 +72,7 @@ Recommended project behavior:
 - Do not add a separate API server; the app already serves its own API routes through Pages Functions.
 - Do not build an in-app login system unless you specifically need custom roles or self-service accounts.
 - If the dashboard says bindings are managed through `wrangler.toml`, that is expected. Use the repo file instead of the UI.
+- Enable Pages build caching if it is available in your Cloudflare project settings and persist `.next/cache` so repeated builds can reuse Next.js build artifacts.
 
 If Cloudflare asks for an environment variable or optional setting you do not understand, leave it blank unless you know the app needs it.
 

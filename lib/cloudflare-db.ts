@@ -1,9 +1,11 @@
 import {
+  PREVIEW_DIAGNOSES,
   PREVIEW_BOOTSTRAP_KEY,
   PREVIEW_EVENTS,
   PREVIEW_MEDICATIONS,
   PREVIEW_NOTES,
   PREVIEW_PATIENTS,
+  PREVIEW_PATIENT_DIAGNOSES,
   PREVIEW_PRESCRIPTIONS
 } from "@/lib/preview-seed-data";
 
@@ -58,6 +60,26 @@ async function createSchema(db: D1Runner) {
       FOREIGN KEY (patientId) REFERENCES Patient(id) ON DELETE CASCADE
     )`,
     `CREATE INDEX IF NOT EXISTS idx_patient_note_patient_created ON PatientNote(patientId, createdAt)`,
+    `CREATE TABLE IF NOT EXISTS Diagnosis (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT,
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_diagnosis_name ON Diagnosis(name)`,
+    `CREATE TABLE IF NOT EXISTS PatientDiagnosis (
+      id TEXT PRIMARY KEY,
+      patientId TEXT NOT NULL,
+      diagnosisId TEXT NOT NULL,
+      diagnosisName TEXT NOT NULL,
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (patientId) REFERENCES Patient(id) ON DELETE CASCADE,
+      FOREIGN KEY (diagnosisId) REFERENCES Diagnosis(id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_patient_diagnosis_patient_created ON PatientDiagnosis(patientId, createdAt)`,
+    `CREATE INDEX IF NOT EXISTS idx_patient_diagnosis_diagnosis ON PatientDiagnosis(diagnosisId)`,
     `CREATE TABLE IF NOT EXISTS PatientEvent (
       id TEXT PRIMARY KEY,
       patientId TEXT NOT NULL,
@@ -110,6 +132,75 @@ async function createSchema(db: D1Runner) {
   ]);
 }
 
+async function tableHasColumn(db: D1Runner, tableName: string, columnName: string) {
+  const columns = await db.prepare(`PRAGMA table_info(${tableName})`).all<{ name: string }>();
+  return columns.results.some((column) => column.name === columnName);
+}
+
+async function migrateLegacySchema(db: D1Runner) {
+  const hasLegacyDiagnosisCode = await tableHasColumn(db, "Diagnosis", "icd10Code");
+  const hasLegacyPatientDiagnosisCode = await tableHasColumn(db, "PatientDiagnosis", "diagnosisCode");
+
+  if (!hasLegacyDiagnosisCode && !hasLegacyPatientDiagnosisCode) {
+    return;
+  }
+
+  await db.prepare("PRAGMA foreign_keys = OFF").run();
+
+  try {
+    if (hasLegacyPatientDiagnosisCode) {
+      await db.prepare("ALTER TABLE PatientDiagnosis RENAME TO PatientDiagnosis_legacy").run();
+      await db
+        .prepare(
+          `CREATE TABLE PatientDiagnosis (
+            id TEXT PRIMARY KEY,
+            patientId TEXT NOT NULL,
+            diagnosisId TEXT NOT NULL,
+            diagnosisName TEXT NOT NULL,
+            createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (patientId) REFERENCES Patient(id) ON DELETE CASCADE,
+            FOREIGN KEY (diagnosisId) REFERENCES Diagnosis(id)
+          )`
+        )
+        .run();
+      await db
+        .prepare(
+          `INSERT INTO PatientDiagnosis (id, patientId, diagnosisId, diagnosisName, createdAt, updatedAt)
+           SELECT id, patientId, diagnosisId, diagnosisName, createdAt, updatedAt
+           FROM PatientDiagnosis_legacy`
+        )
+        .run();
+      await db.prepare("DROP TABLE PatientDiagnosis_legacy").run();
+    }
+
+    if (hasLegacyDiagnosisCode) {
+      await db.prepare("ALTER TABLE Diagnosis RENAME TO Diagnosis_legacy").run();
+      await db
+        .prepare(
+          `CREATE TABLE Diagnosis (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            description TEXT,
+            createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+          )`
+        )
+        .run();
+      await db
+        .prepare(
+          `INSERT INTO Diagnosis (id, name, description, createdAt, updatedAt)
+           SELECT id, name, description, createdAt, updatedAt
+           FROM Diagnosis_legacy`
+        )
+        .run();
+      await db.prepare("DROP TABLE Diagnosis_legacy").run();
+    }
+  } finally {
+    await db.prepare("PRAGMA foreign_keys = ON").run();
+  }
+}
+
 async function insertRows<T>(db: D1Runner, statement: string, rows: readonly T[], bindRow: (row: T) => unknown[]) {
   for (const row of rows) {
     await db.prepare(statement).bind(...bindRow(row)).run();
@@ -117,15 +208,6 @@ async function insertRows<T>(db: D1Runner, statement: string, rows: readonly T[]
 }
 
 async function seedPreviewData(db: D1Runner) {
-  const existing = await db
-    .prepare("SELECT name FROM BootstrapState WHERE name = ?")
-    .bind(PREVIEW_BOOTSTRAP_KEY)
-    .first<{ name: string }>();
-
-  if (existing) {
-    return;
-  }
-
   await insertRows(
     db,
     `INSERT OR IGNORE INTO Medication (
@@ -142,6 +224,21 @@ async function seedPreviewData(db: D1Runner) {
       medication.defaultInstructions,
       medication.createdAt,
       medication.updatedAt
+    ]
+  );
+
+  await insertRows(
+    db,
+    `INSERT OR IGNORE INTO Diagnosis (
+      id, name, description, createdAt, updatedAt
+    ) VALUES (?, ?, ?, ?, ?)`,
+    PREVIEW_DIAGNOSES,
+    (diagnosis) => [
+      diagnosis.id,
+      diagnosis.name,
+      diagnosis.description,
+      diagnosis.createdAt,
+      diagnosis.updatedAt
     ]
   );
 
@@ -170,6 +267,22 @@ async function seedPreviewData(db: D1Runner) {
       patient.notes,
       patient.createdAt,
       patient.updatedAt
+    ]
+  );
+
+  await insertRows(
+    db,
+    `INSERT OR IGNORE INTO PatientDiagnosis (
+      id, patientId, diagnosisId, diagnosisName, createdAt, updatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?)`,
+    PREVIEW_PATIENT_DIAGNOSES,
+    (diagnosis) => [
+      diagnosis.id,
+      diagnosis.patientId,
+      diagnosis.diagnosisId,
+      diagnosis.diagnosisName,
+      diagnosis.createdAt,
+      diagnosis.updatedAt
     ]
   );
 
@@ -224,6 +337,8 @@ async function seedPreviewData(db: D1Runner) {
 }
 
 async function initializeDatabase(db: D1Runner, mode: BootstrapMode) {
+  await createSchema(db);
+  await migrateLegacySchema(db);
   await createSchema(db);
 
   if (mode === "preview") {

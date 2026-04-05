@@ -2,7 +2,13 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkflowNavigationProvider } from "@/app/components/workflow-navigation-provider";
-import { WorkflowSidebar } from "@/app/components/workflow-sidebar";
+import {
+  confirmAndLogout,
+  cloudflareAccessLogoutPath,
+  cloudflareAccessTeamDomainEnvVar,
+  getCloudflareAccessLogoutUrl,
+  WorkflowSidebar
+} from "@/app/components/workflow-sidebar";
 
 const mockUsePathname = vi.fn();
 
@@ -24,6 +30,17 @@ describe("workflow sidebar", () => {
 
     expect(screen.getByRole("link", { name: /rx pad clinical workspace/i })).toHaveAttribute("href", "/");
     expect(screen.getByRole("link", { name: /rx pad clinical workspace/i })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: /diagnosis dataset/i })).toHaveAttribute("href", "/diagnosis-dataset");
+  });
+
+  it("renders the logout action in the sidebar footer", () => {
+    render(
+      <WorkflowNavigationProvider>
+        <WorkflowSidebar />
+      </WorkflowNavigationProvider>
+    );
+
+    expect(screen.getByRole("button", { name: /log out/i })).toBeInTheDocument();
   });
 
   it("highlights only the most specific matching workflow", () => {
@@ -39,5 +56,64 @@ describe("workflow sidebar", () => {
 
     expect(searchPatients).toHaveAttribute("aria-current", "page");
     expect(addPatient).not.toHaveAttribute("aria-current");
+  });
+
+  it("confirms before logging out and redirects through Cloudflare Access", () => {
+    const confirmMock = vi.fn(() => true);
+    const navigateMock = vi.fn();
+
+    const result = confirmAndLogout(confirmMock, navigateMock, "https://example.test/cdn-cgi/access/logout");
+
+    expect(confirmMock).toHaveBeenCalledWith("Log out of Rx Pad?");
+    expect(navigateMock).toHaveBeenCalledWith("https://example.test/cdn-cgi/access/logout");
+    expect(result).toBe(true);
+  });
+
+  it("does not redirect when logout is cancelled", () => {
+    const confirmMock = vi.fn(() => false);
+    const navigateMock = vi.fn();
+
+    const result = confirmAndLogout(confirmMock, navigateMock, cloudflareAccessLogoutPath);
+
+    expect(confirmMock).toHaveBeenCalledWith("Log out of Rx Pad?");
+    expect(navigateMock).not.toHaveBeenCalled();
+    expect(result).toBe(false);
+  });
+
+  it("uses an explicit Cloudflare Access logout URL when configured", () => {
+    const configuredTeamDomain = "team.cloudflareaccess.com";
+    const previousTeamDomain = process.env[cloudflareAccessTeamDomainEnvVar];
+
+    process.env[cloudflareAccessTeamDomainEnvVar] = configuredTeamDomain;
+
+    try {
+      expect(getCloudflareAccessLogoutUrl("https://app.example.test")).toBe(
+        "https://team.cloudflareaccess.com/cdn-cgi/access/logout"
+      );
+    } finally {
+      if (previousTeamDomain === undefined) {
+        delete process.env[cloudflareAccessTeamDomainEnvVar];
+      } else {
+        process.env[cloudflareAccessTeamDomainEnvVar] = previousTeamDomain;
+      }
+    }
+  });
+
+  it("accepts a team domain with a protocol and trailing slash", () => {
+    const previousTeamDomain = process.env[cloudflareAccessTeamDomainEnvVar];
+
+    process.env[cloudflareAccessTeamDomainEnvVar] = "https://team.cloudflareaccess.com/";
+
+    try {
+      expect(getCloudflareAccessLogoutUrl("https://app.example.test")).toBe(
+        "https://team.cloudflareaccess.com/cdn-cgi/access/logout"
+      );
+    } finally {
+      if (previousTeamDomain === undefined) {
+        delete process.env[cloudflareAccessTeamDomainEnvVar];
+      } else {
+        process.env[cloudflareAccessTeamDomainEnvVar] = previousTeamDomain;
+      }
+    }
   });
 });

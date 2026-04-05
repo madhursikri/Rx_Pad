@@ -33,6 +33,14 @@ const patient = {
   createdAt: "2026-03-02T09:00:00.000Z"
 };
 
+const diagnoses = [
+  {
+    id: "diag-acute-pharyngitis",
+    name: "Acute pharyngitis",
+    description: "Sore throat with or without fever."
+  }
+];
+
 const additionalPatients = Array.from({ length: 11 }, (_, index) => {
   const number = index + 2;
   return {
@@ -103,6 +111,20 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => 
     );
   }
 
+  if (url.endsWith(`/api/patients/${patient.id}/diagnoses`) && method === "GET") {
+    return new Response(
+      JSON.stringify([
+        {
+          id: "pd-1",
+          diagnosisId: "diag-acute-pharyngitis",
+          diagnosisName: "Acute pharyngitis",
+          createdAt: "2026-03-10T08:30:00.000Z"
+        }
+      ]),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   if (url.endsWith(`/api/patients/${patient.id}/events`) && method === "GET") {
     return new Response(
       JSON.stringify([
@@ -135,6 +157,13 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => 
     );
   }
 
+  if (url.includes("/api/diagnoses?query=") && method === "GET") {
+    return new Response(JSON.stringify(diagnoses), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+
   if (url.endsWith(`/api/patients/${patient.id}/prescriptions`) && method === "POST") {
     const body = JSON.parse(String(init?.body ?? "{}")) as { allowDuplicate?: boolean };
     if (!body.allowDuplicate) {
@@ -158,6 +187,29 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => 
         instructions: "Finish the full course.",
         isActive: true,
         inactivatedAt: null,
+        createdAt: new Date().toISOString()
+      }),
+      { status: 201, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  if (url.endsWith(`/api/patients/${patient.id}/diagnoses`) && method === "POST") {
+    const body = JSON.parse(String(init?.body ?? "{}")) as { diagnosisId?: string };
+    if (body.diagnosisId !== "diag-acute-pharyngitis") {
+      return new Response(
+        JSON.stringify({
+          message: "Diagnosis not found",
+          fieldErrors: { diagnosisId: "Select a valid diagnosis from search results" }
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({
+        id: "pd-new",
+        diagnosisId: "diag-acute-pharyngitis",
+        diagnosisName: "Acute pharyngitis",
         createdAt: new Date().toISOString()
       }),
       { status: 201, headers: { "Content-Type": "application/json" } }
@@ -219,6 +271,32 @@ describe("patients page", () => {
 
     await waitFor(() => expect(screen.getByText("Prescription added successfully.")).toBeInTheDocument());
     expect(screen.queryByText(/add prescription/i)).not.toBeInTheDocument();
+  });
+
+  it("loads a patient and adds a diagnosis from the diagnosis dataset", async () => {
+    const user = userEvent.setup();
+    render(
+      <LocaleProvider>
+        <WorkflowNavigationProvider>
+          <SearchPatientsPage />
+        </WorkflowNavigationProvider>
+      </LocaleProvider>
+    );
+
+    expect(await screen.findByRole("button", { name: /open emma carter/i })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /open emma carter/i }));
+    expect(await screen.findByRole("heading", { name: /patient overview/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^add diagnosis$/i }));
+    const addSection = document.getElementById("add-diagnosis");
+    expect(addSection).toBeTruthy();
+    await user.type(within(addSection!).getByLabelText(/search diagnosis/i), "Acute pharyngitis");
+    const diagnosisOption = await within(addSection!).findByRole("button", { name: /acute pharyngitis/i });
+    await user.click(diagnosisOption);
+    await user.click(screen.getByRole("button", { name: /^save diagnosis$/i }));
+
+    await waitFor(() => expect(screen.getByText("Diagnosis added successfully.")).toBeInTheDocument());
+    expect(screen.getByText(/acute pharyngitis/i)).toBeInTheDocument();
   });
 
   it("prompts before leaving a dirty patient chart from the sidebar", async () => {

@@ -36,6 +36,30 @@ CREATE TABLE IF NOT EXISTS PatientNote (
 
 CREATE INDEX IF NOT EXISTS idx_patient_note_patient_created ON PatientNote(patientId, createdAt);
 
+CREATE TABLE IF NOT EXISTS Diagnosis (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT,
+  createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_diagnosis_name ON Diagnosis(name);
+
+CREATE TABLE IF NOT EXISTS PatientDiagnosis (
+  id TEXT PRIMARY KEY,
+  patientId TEXT NOT NULL,
+  diagnosisId TEXT NOT NULL,
+  diagnosisName TEXT NOT NULL,
+  createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (patientId) REFERENCES Patient(id) ON DELETE CASCADE,
+  FOREIGN KEY (diagnosisId) REFERENCES Diagnosis(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_patient_diagnosis_patient_created ON PatientDiagnosis(patientId, createdAt);
+CREATE INDEX IF NOT EXISTS idx_patient_diagnosis_diagnosis ON PatientDiagnosis(diagnosisId);
+
 CREATE TABLE IF NOT EXISTS PatientEvent (
   id TEXT PRIMARY KEY,
   patientId TEXT NOT NULL,
@@ -87,8 +111,10 @@ CREATE INDEX IF NOT EXISTS idx_prescription_medication ON Prescription(medicatio
 
 DELETE FROM PatientEvent;
 DELETE FROM PatientNote;
+DELETE FROM PatientDiagnosis;
 DELETE FROM Prescription;
 DELETE FROM Patient;
+DELETE FROM Diagnosis;
 DELETE FROM Medication;
 
 INSERT INTO Medication (id, name, commonStrengths, defaultDose, defaultFrequency, defaultDuration, defaultInstructions, createdAt, updatedAt) VALUES
@@ -99,10 +125,24 @@ INSERT INTO Medication (id, name, commonStrengths, defaultDose, defaultFrequency
 ('med-albuterol', 'Albuterol Inhaler', '90 mcg/actuation', '2 puffs', 'Every 4-6 hours as needed', '30 days', 'Use spacer if available', '2026-03-01T08:20:00.000Z', '2026-03-01T08:20:00.000Z'),
 ('med-sertraline', 'Sertraline', '25 mg, 50 mg, 100 mg', '1 tablet', 'Once daily', '30 days', 'Take at same time daily', '2026-03-01T08:25:00.000Z', '2026-03-01T08:25:00.000Z');
 
+INSERT INTO Diagnosis (id, name, description, createdAt, updatedAt) VALUES
+('diag-acute-pharyngitis', 'Acute pharyngitis', 'Sore throat with or without fever.', '2026-03-01T09:00:00.000Z', '2026-03-01T09:00:00.000Z'),
+('diag-type-2-diabetes', 'Type 2 diabetes mellitus', 'Diabetes without documented complications.', '2026-03-01T09:05:00.000Z', '2026-03-01T09:05:00.000Z'),
+('diag-essential-hypertension', 'Essential hypertension', 'Primary high blood pressure.', '2026-03-01T09:10:00.000Z', '2026-03-01T09:10:00.000Z'),
+('diag-major-depression', 'Major depressive disorder', 'Depressive episode, unspecified.', '2026-03-01T09:15:00.000Z', '2026-03-01T09:15:00.000Z'),
+('diag-asthma', 'Asthma', 'Chronic reactive airway disease.', '2026-03-01T09:20:00.000Z', '2026-03-01T09:20:00.000Z'),
+('diag-hyperlipidemia', 'Hyperlipidemia', 'Elevated lipids and cholesterol.', '2026-03-01T09:25:00.000Z', '2026-03-01T09:25:00.000Z');
+
 INSERT INTO Patient (id, firstName, lastName, dob, gender, phoneCountryCode, phone, phoneE164, email, addressLine1, addressLine2, city, state, postalCode, notes, createdAt, updatedAt) VALUES
 ('patient-emma-carter', 'Emma', 'Carter', '1988-04-12T00:00:00.000Z', 'female', '+1', '4155550188', '14155550188', 'emma.carter@example.test', '145 Lakeview Ave', NULL, 'San Francisco', 'CA', '94107', 'Test patient with active and inactive prescriptions.', '2026-03-02T09:00:00.000Z', '2026-03-18T10:45:00.000Z'),
 ('patient-noah-kim', 'Noah', 'Kim', '1995-06-14T00:00:00.000Z', 'male', NULL, NULL, NULL, 'noah.kim@example.test', NULL, NULL, NULL, NULL, NULL, 'No phone provided. Good record for note and timeline testing.', '2026-03-03T11:15:00.000Z', '2026-03-19T15:20:00.000Z'),
 ('patient-priya-shah', 'Priya', 'Shah', '1974-05-06T00:00:00.000Z', 'female', '+971', '501234567', '971501234567', NULL, '24 Palm Residence', NULL, 'Dubai', NULL, NULL, 'Useful for international phone and chronic medication examples.', '2026-03-04T12:30:00.000Z', '2026-03-20T08:35:00.000Z');
+
+INSERT INTO PatientDiagnosis (id, patientId, diagnosisId, diagnosisName, createdAt, updatedAt) VALUES
+('pd-emma-pharyngitis', 'patient-emma-carter', 'diag-acute-pharyngitis', 'Acute pharyngitis', '2026-03-10T08:30:00.000Z', '2026-03-10T08:30:00.000Z'),
+('pd-noah-depression', 'patient-noah-kim', 'diag-major-depression', 'Major depressive disorder', '2026-03-12T16:30:00.000Z', '2026-03-12T16:30:00.000Z'),
+('pd-priya-diabetes', 'patient-priya-shah', 'diag-type-2-diabetes', 'Type 2 diabetes mellitus', '2026-03-13T07:45:00.000Z', '2026-03-13T07:45:00.000Z'),
+('pd-priya-hypertension', 'patient-priya-shah', 'diag-essential-hypertension', 'Essential hypertension', '2026-03-20T08:00:00.000Z', '2026-03-20T08:00:00.000Z');
 
 INSERT INTO Prescription (id, patientId, medicationId, medicationName, strength, dose, frequency, duration, instructions, isActive, inactivatedAt, createdAt, updatedAt) VALUES
 ('rx-emma-amoxicillin', 'patient-emma-carter', 'med-amoxicillin', 'Amoxicillin', '500 mg', '1 capsule', 'Three times daily', '7 days', 'Finish the full course.', 1, NULL, '2026-03-10T09:30:00.000Z', '2026-03-10T09:30:00.000Z'),

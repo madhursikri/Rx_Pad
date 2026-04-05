@@ -42,6 +42,16 @@ const helpTopics = [
     ]
   },
   {
+    title: "Add a diagnosis",
+    summary: "Use this workflow when you want to add a recorded diagnosis from the master diagnosis list.",
+    steps: [
+      "Select a patient first.",
+      "Search the diagnosis dataset.",
+      "Choose the matching diagnosis.",
+      "Save it to the patient chart with today's date."
+    ]
+  },
+  {
     title: "Add a note",
     summary: "Use this when you want to record a visit note or clinical reminder.",
     steps: [
@@ -83,6 +93,9 @@ export default function HomePage() {
             </Link>
             <Link href="/prescription-dataset" className="btn btn-soft">
               Prescription Dataset
+            </Link>
+            <Link href="/diagnosis-dataset" className="btn btn-soft">
+              Diagnosis Dataset
             </Link>
           </div>
         </div>

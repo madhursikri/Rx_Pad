@@ -39,6 +39,10 @@ a {
   @apply fixed inset-y-0 left-0 z-20 hidden w-[280px] overflow-y-auto border-r border-slate-200 bg-white/90 p-5 backdrop-blur-md lg:flex lg:flex-col lg:gap-4;
 }
 
+.sidebar-content {
+  @apply flex flex-1 flex-col gap-4;
+}
+
 .sidebar-brand {
   @apply rounded-2xl border border-slate-200 bg-white px-4 py-3;
 }
@@ -97,6 +101,18 @@ a {
 
 .sidebar-link.active small {
   @apply text-indigo-700;
+}
+
+.sidebar-footer {
+  @apply mt-auto pt-2;
+}
+
+.sidebar-logout {
+  @apply flex w-full flex-col items-start rounded-2xl border border-rose-200 bg-rose-50 px-3 py-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-100;
+}
+
+.sidebar-logout span {
+  @apply block text-sm font-semibold text-rose-900;
 }
 
 .app-main {
@@ -513,6 +529,7 @@ textarea {
 .btn-soft:focus-visible,
 .btn-danger:focus-visible,
 .sidebar-link:focus-visible,
+.sidebar-logout:focus-visible,
 .rx-option:focus-visible,
 .rx-card-selectable:focus-visible {
   outline: none;

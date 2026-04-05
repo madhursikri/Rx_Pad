@@ -1,18 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
+  createDiagnosis,
   createMedication,
   createPatient,
+  createPatientDiagnosis,
   createPatientNote,
   createPrescription,
+  deleteDiagnosis,
   deleteMedication,
+  getDiagnoses,
   findDuplicatePatientWarnings,
   getMedications,
   getPatientById,
+  getPatientDiagnoses,
   getPatientEvents,
   getPatientNotes,
   getPatientPrescriptions,
   getRecentPatients,
   searchPatients,
+  updateDiagnosis,
   updateMedication,
   updatePrescriptionStatus
 } from "@/lib/cloudflare-repo";
@@ -117,6 +123,46 @@ describe("cloudflare repository", () => {
 
     const inUse = await deleteMedication(db, "med-amoxicillin");
     expect(inUse.status).toBe("in_use");
+  });
+
+  it("supports diagnosis CRUD and patient diagnosis flows", async () => {
+    const db = await createTestD1Database();
+    await ensureDatabaseReady(db, "preview");
+
+    const all = await getDiagnoses(db, "", 50);
+    expect(all).toHaveLength(6);
+
+    const created = await createDiagnosis(db, {
+      name: "Gastroesophageal reflux disease",
+      description: "Acid reflux without esophagitis."
+    });
+    expect(created?.name).toBe("Gastroesophageal reflux disease");
+
+    const duplicate = await createDiagnosis(db, {
+      name: "Gastroesophageal reflux disease",
+      description: "Acid reflux without esophagitis."
+    });
+    expect(duplicate).toBeNull();
+
+    const updated = await updateDiagnosis(db, created!.id, {
+      name: "GERD",
+      description: "Updated diagnosis label."
+    });
+    expect(updated.status).toBe("ok");
+
+    const inUse = await deleteDiagnosis(db, "diag-acute-pharyngitis");
+    expect(inUse.status).toBe("in_use");
+
+    const patientDiagnoses = await getPatientDiagnoses(db, "patient-emma-carter");
+    expect(patientDiagnoses).toHaveLength(1);
+
+    const createdPatientDiagnosis = await createPatientDiagnosis(db, "patient-emma-carter", {
+      diagnosisId: "diag-asthma"
+    });
+    expect(createdPatientDiagnosis.status).toBe("ok");
+
+    const updatedPatientDiagnoses = await getPatientDiagnoses(db, "patient-emma-carter");
+    expect(updatedPatientDiagnoses).toHaveLength(2);
   });
 
   it("supports prescription duplicate warnings and status updates", async () => {

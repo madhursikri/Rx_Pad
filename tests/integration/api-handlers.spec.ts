@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import * as patientsApi from "@/functions/api/patients";
 import * as patientApi from "@/functions/api/patients/[id]";
+import * as patientDiagnosesApi from "@/functions/api/patients/[id]/diagnoses";
 import * as notesApi from "@/functions/api/patients/[id]/notes";
 import * as eventsApi from "@/functions/api/patients/[id]/events";
 import * as prescriptionsApi from "@/functions/api/patients/[id]/prescriptions";
 import * as prescriptionStatusApi from "@/functions/api/patients/[id]/prescriptions/[prescriptionId]";
+import * as diagnosesApi from "@/functions/api/diagnoses";
+import * as diagnosisApi from "@/functions/api/diagnoses/[id]";
 import * as medicationsApi from "@/functions/api/medications";
 import * as medicationApi from "@/functions/api/medications/[id]";
 import { ensureDatabaseReady } from "@/lib/cloudflare-db";
@@ -178,6 +181,67 @@ describe("API handlers", () => {
       params: { id: "patient-emma-carter" }
     });
     expect(created.status).toBe(201);
+  });
+
+  it("handles diagnosis dataset and patient diagnosis responses", async () => {
+    const db = await createTestD1Database();
+    await ensureDatabaseReady(db, "preview");
+
+    const getResponse = await diagnosesApi.onRequestGet({
+      request: new Request("http://local/api/diagnoses?query=pharyngitis"),
+      env: { DB: db }
+    });
+    expect(getResponse.status).toBe(200);
+
+    const duplicate = await diagnosesApi.onRequestPost({
+      request: jsonRequest("http://local/api/diagnoses", {
+        name: "Acute pharyngitis",
+        description: "Sore throat with or without fever."
+      }),
+      env: { DB: db }
+    });
+    expect(duplicate.status).toBe(400);
+
+    const createdDiagnosis = await diagnosesApi.onRequestPost({
+      request: jsonRequest("http://local/api/diagnoses", {
+        name: "Gastroesophageal reflux disease",
+        description: "Acid reflux without esophagitis."
+      }),
+      env: { DB: db }
+    });
+    expect(createdDiagnosis.status).toBe(201);
+    const diagnosis = (await createdDiagnosis.json()) as { id: string };
+
+    const diagnosisUpdate = await diagnosisApi.onRequestPatch({
+      request: jsonRequest(`http://local/api/diagnoses/${diagnosis.id}`, {
+        name: "GERD",
+        description: "Updated diagnosis label."
+      }),
+      env: { DB: db },
+      params: { id: diagnosis.id }
+    });
+    expect(diagnosisUpdate.status).toBe(200);
+
+    const patientGet = await patientDiagnosesApi.onRequestGet({
+      env: { DB: db },
+      params: { id: "patient-emma-carter" }
+    });
+    expect(patientGet.status).toBe(200);
+
+    const patientPost = await patientDiagnosesApi.onRequestPost({
+      request: jsonRequest("http://local/api/patients/patient-emma-carter/diagnoses", {
+        diagnosisId: "diag-asthma"
+      }),
+      env: { DB: db },
+      params: { id: "patient-emma-carter" }
+    });
+    expect(patientPost.status).toBe(201);
+
+    const missing = await diagnosisApi.onRequestDelete({
+      env: { DB: db },
+      params: { id: "missing" }
+    });
+    expect(missing.status).toBe(404);
   });
 
   it("handles prescription status and medication CRUD error branches", async () => {

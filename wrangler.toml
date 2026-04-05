@@ -5,6 +5,7 @@ pages_build_output_dir = "out"
 
 [vars]
 RX_PAD_BOOTSTRAP_MODE = "production"
+NEXT_PUBLIC_CLOUDFLARE_ACCESS_TEAM_DOMAIN = "sikrigarg.cloudflareaccess.com"
 
 # Local/default D1 binding
 [[d1_databases]]
@@ -14,6 +15,7 @@ database_id = "7e1a7c7a-f70f-4a09-9ea6-3d2b5cfc47d2"
 
 [env.preview.vars]
 RX_PAD_BOOTSTRAP_MODE = "preview"
+NEXT_PUBLIC_CLOUDFLARE_ACCESS_TEAM_DOMAIN = "sikrigarg.cloudflareaccess.com"
 
 [[env.preview.d1_databases]]
 binding = "DB"
@@ -22,6 +24,7 @@ database_id = "45c2ced8-6814-4a3c-ba16-8278eabfe814"
 
 [env.production.vars]
 RX_PAD_BOOTSTRAP_MODE = "production"
+NEXT_PUBLIC_CLOUDFLARE_ACCESS_TEAM_DOMAIN = "sikrigarg.cloudflareaccess.com"
 
 [[env.production.d1_databases]]
 binding = "DB"

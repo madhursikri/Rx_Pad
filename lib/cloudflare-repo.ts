@@ -1,12 +1,15 @@
 import type { CreateMedicationInput } from "@/lib/medication-validation";
+import type { CreateDiagnosisInput, CreatePatientDiagnosisInput } from "@/lib/diagnosis-validation";
 import type { CreatePatientInput } from "@/lib/patient-validation";
 import type { CreatePrescriptionInput } from "@/lib/prescription-validation";
 import { ensureDatabaseReady } from "@/lib/cloudflare-db";
 import { describePatientChanges } from "@/lib/patient-records";
 import type {
+  DiagnosisOption,
   MedicationOption,
   PatientDetail,
   PatientEventRecord,
+  PatientDiagnosisRecord,
   PatientNoteRecord,
   PatientSummary,
   PrescriptionRecord
@@ -46,6 +49,14 @@ type MedicationRow = {
   updatedAt: string;
 };
 
+type DiagnosisRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type PrescriptionRow = {
   id: string;
   patientId: string;
@@ -66,6 +77,15 @@ type NoteRow = {
   id: string;
   note: string;
   createdAt: string;
+};
+
+type PatientDiagnosisRow = {
+  id: string;
+  patientId: string;
+  diagnosisId: string;
+  diagnosisName: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type EventRow = {
@@ -115,6 +135,14 @@ function toMedicationOption(row: MedicationRow): MedicationOption {
   };
 }
 
+function toDiagnosisOption(row: DiagnosisRow): DiagnosisOption {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description
+  };
+}
+
 function toPrescriptionRecord(row: PrescriptionRow): PrescriptionRecord {
   return {
     id: row.id,
@@ -134,6 +162,15 @@ function toNoteRecord(row: NoteRow): PatientNoteRecord {
   return {
     id: row.id,
     note: row.note,
+    createdAt: row.createdAt
+  };
+}
+
+function toPatientDiagnosisRecord(row: PatientDiagnosisRow): PatientDiagnosisRecord {
+  return {
+    id: row.id,
+    diagnosisId: row.diagnosisId,
+    diagnosisName: row.diagnosisName,
     createdAt: row.createdAt
   };
 }
@@ -179,6 +216,17 @@ async function getMedicationRow(db: D1Runner, id: string): Promise<MedicationRow
     )
     .bind(id)
     .first<MedicationRow>();
+}
+
+async function getDiagnosisRow(db: D1Runner, id: string): Promise<DiagnosisRow | null> {
+  return db
+    .prepare(
+      `SELECT id, name, description, createdAt, updatedAt
+       FROM Diagnosis
+       WHERE id = ?`
+    )
+    .bind(id)
+    .first<DiagnosisRow>();
 }
 
 async function patientExists(db: D1Runner, id: string): Promise<boolean> {
@@ -450,6 +498,93 @@ export async function getMedications(db: D1Runner, query: string, limit: number)
   return rows.results.map(toMedicationOption);
 }
 
+export async function getDiagnoses(db: D1Runner, query: string, limit: number): Promise<DiagnosisOption[]> {
+  await ensureDatabaseReady(db);
+  const statement = query
+    ? db
+        .prepare(
+          `SELECT id, name, description, createdAt, updatedAt
+           FROM Diagnosis
+           WHERE LOWER(name) LIKE LOWER(?)
+              OR LOWER(COALESCE(description, '')) LIKE LOWER(?)
+           ORDER BY name ASC
+           LIMIT ?`
+        )
+        .bind(`%${query}%`, `%${query}%`, limit)
+    : db
+        .prepare(
+          `SELECT id, name, description, createdAt, updatedAt
+           FROM Diagnosis
+           ORDER BY name ASC
+           LIMIT ?`
+        )
+        .bind(limit);
+  const rows = await statement.all<DiagnosisRow>();
+  return rows.results.map(toDiagnosisOption);
+}
+
+export async function createDiagnosis(db: D1Runner, input: CreateDiagnosisInput) {
+  await ensureDatabaseReady(db);
+  const existing = await db.prepare("SELECT id FROM Diagnosis WHERE LOWER(name) = LOWER(?)").bind(input.name).first<{ id: string }>();
+  if (existing) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  const id = crypto.randomUUID();
+  await db
+    .prepare(
+      `INSERT INTO Diagnosis (
+        id, name, description, createdAt, updatedAt
+      ) VALUES (?, ?, ?, ?, ?)`
+    )
+    .bind(id, input.name, input.description, now, now)
+    .run();
+
+  const created = await getDiagnosisRow(db, id);
+  return created ? toDiagnosisOption(created) : null;
+}
+
+export async function updateDiagnosis(db: D1Runner, id: string, input: CreateDiagnosisInput) {
+  await ensureDatabaseReady(db);
+  const existing = await getDiagnosisRow(db, id);
+  if (!existing) return { status: "not_found" as const };
+
+  const duplicate = await db
+    .prepare("SELECT id FROM Diagnosis WHERE LOWER(name) = LOWER(?) AND id != ?")
+    .bind(input.name, id)
+    .first<{ id: string }>();
+  if (duplicate) return { status: "duplicate" as const };
+
+  const now = new Date().toISOString();
+  await db
+    .prepare(
+      `UPDATE Diagnosis
+       SET name = ?, description = ?, updatedAt = ?
+       WHERE id = ?`
+    )
+    .bind(input.name, input.description, now, id)
+    .run();
+
+  const updated = await getDiagnosisRow(db, id);
+  return updated ? { status: "ok" as const, diagnosis: toDiagnosisOption(updated) } : { status: "not_found" as const };
+}
+
+export async function deleteDiagnosis(db: D1Runner, id: string) {
+  await ensureDatabaseReady(db);
+  const existing = await getDiagnosisRow(db, id);
+  if (!existing) return { status: "not_found" as const };
+
+  const usage = await db
+    .prepare("SELECT COUNT(*) as count FROM PatientDiagnosis WHERE diagnosisId = ?")
+    .bind(id)
+    .first<{ count: number }>();
+  if ((usage?.count ?? 0) > 0) return { status: "in_use" as const };
+
+  await db.prepare("DELETE FROM Diagnosis WHERE id = ?").bind(id).run();
+  return { status: "deleted" as const };
+}
+
 export async function createMedication(db: D1Runner, input: CreateMedicationInput) {
   await ensureDatabaseReady(db);
   const existing = await db.prepare("SELECT id FROM Medication WHERE name = ?").bind(input.name).first<{ id: string }>();
@@ -552,6 +687,59 @@ export async function createPatientNote(db: D1Runner, id: string, note: string) 
     .bind(noteId)
     .first<NoteRow>();
   return row ? toNoteRecord(row) : null;
+}
+
+export async function getPatientDiagnoses(db: D1Runner, id: string): Promise<PatientDiagnosisRecord[] | null> {
+  await ensureDatabaseReady(db);
+  const exists = await patientExists(db, id);
+  if (!exists) return null;
+
+  const rows = await db
+    .prepare(
+      `SELECT id, patientId, diagnosisId, diagnosisName, createdAt, updatedAt
+       FROM PatientDiagnosis
+       WHERE patientId = ?
+       ORDER BY createdAt DESC`
+    )
+    .bind(id)
+    .all<PatientDiagnosisRow>();
+  return rows.results.map(toPatientDiagnosisRecord);
+}
+
+export async function createPatientDiagnosis(db: D1Runner, id: string, input: CreatePatientDiagnosisInput) {
+  await ensureDatabaseReady(db);
+  const [patientExistsResult, diagnosis] = await Promise.all([patientExists(db, id), getDiagnosisRow(db, input.diagnosisId)]);
+  if (!patientExistsResult) return { status: "patient_not_found" as const };
+  if (!diagnosis) return { status: "diagnosis_not_found" as const };
+
+  const now = new Date().toISOString();
+  const patientDiagnosisId = crypto.randomUUID();
+  await db
+    .prepare(
+      `INSERT INTO PatientDiagnosis (
+        id, patientId, diagnosisId, diagnosisName, createdAt, updatedAt
+      ) VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    .bind(patientDiagnosisId, id, diagnosis.id, diagnosis.name, now, now)
+    .run();
+
+  await db
+    .prepare("INSERT INTO PatientEvent (id, patientId, type, title, details, createdAt) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(
+      crypto.randomUUID(),
+      id,
+      "DIAGNOSIS_CREATED",
+      "Diagnosis added",
+      `${diagnosis.name} recorded.`,
+      now
+    )
+    .run();
+
+  const row = await db
+    .prepare("SELECT id, patientId, diagnosisId, diagnosisName, createdAt, updatedAt FROM PatientDiagnosis WHERE id = ?")
+    .bind(patientDiagnosisId)
+    .first<PatientDiagnosisRow>();
+  return row ? { status: "ok" as const, diagnosis: toPatientDiagnosisRecord(row) } : { status: "not_found" as const };
 }
 
 export async function getPatientEvents(db: D1Runner, id: string): Promise<PatientEventRecord[] | null> {
